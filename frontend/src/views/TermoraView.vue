@@ -23,7 +23,7 @@ const adapter = createTermoraAdapter()
       <summary class="info-summary">关于 Termora 托管</summary>
       <div class="info-body">
         <p>Termora 是跨平台终端与 SSH 客户端（Java/Swing 构建，官方 Windows 包为 jpackage 便携版，<a class="inline-link" href="https://github.com/TermoraDev/termora" target="_blank" rel="noopener">TermoraDev/termora</a>，双许可 AGPL-3.0/商业）。本模块仅转链官方 GitHub Releases 托管其运行——便携包自带 JRE，不依赖系统 Java；启停受 JobObject 管控。</p>
-        <p class="hint-dim">Termora 是单实例应用：Hanxi 启动的实例与你自行打开的实例互斥（后者在场时前者会激活它后让位）。会话与密钥索引保存在版本目录 data\ 内自包含，卸载版本前请先「打开位置」迁出。</p>
+        <p class="hint-dim">Termora 是单实例应用：Hanxi 启动的实例与你自行打开的实例互斥（后者在场时前者会激活它后让位）。数据位置由联动区「数据模式」决定——默认<b>共享</b> <code class="mono">~/.termora</code>（与你自己打开的 Termora 同一份主机、会话与凭据索引，升级换版本或卸载托管版本都不动它）；切到<b>独立</b>后才落在本版本目录 <code class="mono">data\</code> 内，卸载该版本会连带删除，请先迁出。</p>
         <p class="hint-dim">上游 2.x 线全部以预发布（beta）发布，beta 即事实主干——列表如实全列、预发布徽标不藏行。</p>
       </div>
     </details>

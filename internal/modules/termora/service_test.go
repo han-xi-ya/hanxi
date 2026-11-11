@@ -41,6 +41,91 @@ func newTestTermoraService(t *testing.T) (*TermoraService, string) {
 	return svc, versionsDir
 }
 
+// applyDataMode 的三条可确定路径（2026-11-11 数据模式开关）：
+//   - 独立模式：补齐 exe 同级 data\ 激活器；
+//   - 共享模式（默认）+ 遗留 data\：改名停用留档，内容一字节不动；
+//   - 共享模式 + 无 data\：零动作零噪音（新装版本本来就共享）。
+//
+// 改名失败（实例在跑、目录被占用）走"如实上抛并中止启动"，由调用链的 error 传播
+// 承载——Windows 上无法在不引入独占句柄接缝的前提下确定性构造，故不在此伪装覆盖。
+func TestApplyDataModeBySwitch(t *testing.T) {
+	exeOf := func(versionsDir, token string) string {
+		return filepath.Join(versionsDir, "termora_"+token, "Termora", "Termora.exe")
+	}
+
+	t.Run("独立模式=补齐 data 激活器", func(t *testing.T) {
+		svc, versionsDir := newTestTermoraService(t)
+		seedInstalled(t, versionsDir, "2.16.1")
+		exe := exeOf(versionsDir, "2.16.1")
+		if err := svc.store.SetPortableData(true); err != nil {
+			t.Fatal(err)
+		}
+		note, err := svc.applyDataMode(exe)
+		if err != nil || note != "" {
+			t.Fatalf("独立模式应静默建目录: note=%q err=%v", note, err)
+		}
+		if fi, serr := os.Stat(filepath.Join(filepath.Dir(exe), termoraDataDirName)); serr != nil || !fi.IsDir() {
+			t.Fatalf("独立模式必须建 data\\: %v", serr)
+		}
+	})
+
+	t.Run("共享模式=遗留 data 改名停用且内容保留", func(t *testing.T) {
+		svc, versionsDir := newTestTermoraService(t)
+		seedInstalled(t, versionsDir, "2.16.2")
+		exe := exeOf(versionsDir, "2.16.2")
+		dataDir := filepath.Join(filepath.Dir(exe), termoraDataDirName)
+		if err := os.MkdirAll(filepath.Join(dataDir, "config"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dataDir, "config", "termora.db"), []byte("隔离期数据"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		note, err := svc.applyDataMode(exe) // 默认共享
+		if err != nil {
+			t.Fatalf("applyDataMode: %v", err)
+		}
+		if !strings.Contains(note, "已停用") || !strings.Contains(note, "data.disabled-") {
+			t.Errorf("启动回执必须说明停用与回退办法: %q", note)
+		}
+		if _, serr := os.Stat(dataDir); !os.IsNotExist(serr) {
+			t.Fatal("共享模式下 data\\ 必须不再在场（否则 Termora 仍走隔离）")
+		}
+		matches, gerr := filepath.Glob(filepath.Join(filepath.Dir(exe), "data.disabled-*"))
+		if gerr != nil || len(matches) != 1 {
+			t.Fatalf("应留下恰好一个停用档: %v err=%v", matches, gerr)
+		}
+		raw, rerr := os.ReadFile(filepath.Join(matches[0], "config", "termora.db"))
+		if rerr != nil || string(raw) != "隔离期数据" {
+			t.Fatalf("停用档内容必须原样保留: %q err=%v", raw, rerr)
+		}
+	})
+
+	t.Run("共享模式=无 data 时零动作", func(t *testing.T) {
+		svc, versionsDir := newTestTermoraService(t)
+		seedInstalled(t, versionsDir, "2.16.3")
+		note, err := svc.applyDataMode(exeOf(versionsDir, "2.16.3"))
+		if err != nil || note != "" {
+			t.Fatalf("无遗留目录应静默通过: note=%q err=%v", note, err)
+		}
+	})
+
+	t.Run("模式开关落盘可复现", func(t *testing.T) {
+		st := newTermoraStore(t.TempDir())
+		if st.GetPortableData() {
+			t.Fatal("数据模式默认必须为共享（false）")
+		}
+		if err := st.SetPortableData(true); err != nil {
+			t.Fatal(err)
+		}
+		if !newTermoraStore(dirOf(st)).GetPortableData() {
+			t.Fatal("重载后模式应复现为独立")
+		}
+	})
+}
+
+// dirOf 反射出 store 的所在目录（复用 jsonstore 落盘位置断言重载语义）。
+func dirOf(s *termoraStore) string { return filepath.Dir(s.filePath) }
+
 func TestRemoveOnlyActiveVersionAllowed(t *testing.T) {
 	svc, versionsDir := newTestTermoraService(t)
 	seedInstalled(t, versionsDir, "2.16.1")

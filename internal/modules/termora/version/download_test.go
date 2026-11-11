@@ -128,9 +128,11 @@ func TestDownloadOfficialDigestChainSuccess(t *testing.T) {
 	if !strings.HasSuffix(list[0].ExePath, filepath.Join(payloadDir, exeName)) {
 		t.Fatalf("jpackage 嵌套布局应保持: %s", list[0].ExePath)
 	}
-	// portable 激活器落位
-	if fi, serr := os.Stat(filepath.Join(filepath.Dir(list[0].ExePath), dataDirName)); serr != nil || !fi.IsDir() {
-		t.Fatalf("下载链必须补齐 data\\ 激活目录: %v", serr)
+	// 落位链**不得**建 data\ 激活器（2026-11-11 口径变更）：数据模式由 service 层
+	// 按页内开关在启动前裁决，默认共享 ~/.termora。落位就建它会把每个托管版本隔成
+	// 空环境——"从 Hanxi 打开 Termora 没数据"的病灶（TROUBLESHOOTING #151）。
+	if fi, serr := os.Stat(filepath.Join(filepath.Dir(list[0].ExePath), dataDirName)); serr == nil && fi.IsDir() {
+		t.Fatalf("下载链不应创建 data\\ 激活目录（数据模式归启动裁决）")
 	}
 	assertNoLeftovers(t, m.versionsDir)
 }

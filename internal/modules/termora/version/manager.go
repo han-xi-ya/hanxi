@@ -14,7 +14,9 @@
 // JRE，零系统 Java 依赖）。托管保持原布局不解套；portable 数据激活器为
 // 与 exe 同级的 data\ 目录（上游 Application.getBaseDataDir 实证：
 // Windows 绿色版检测 appPath 同级 data 存在即自包含），缺失时上游回落
-// ~/.termora——托管下载/导入/启动前统一补齐（见 instance 与 service）。
+// ~/.termora。是否创建它由 service 层「数据模式」开关在**启动前**裁决
+// （默认共享 ~/.termora，见 service.applyDataMode）——落位链不再无条件
+// 补齐：旧实现把每个托管版本隔成空环境，机主"从 Hanxi 打开没数据"即出于此。
 package version
 
 import (
@@ -250,12 +252,10 @@ func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, on
 		emit("error", 0, 0, err.Error())
 		return err
 	}
-	// portable 激活器：与 exe 同级补建 data\，首启即数据自包含在托管目录
-	// （上游绿色版实证语义；缺失时应用会回落写 ~/.termora）。
-	if err := os.MkdirAll(filepath.Join(filepath.Dir(exe), dataDirName), 0755); err != nil {
-		emit("error", 0, 0, err.Error())
-		return err
-	}
+	// 刻意不在落位时建 data\ 激活器：数据模式由 service.applyDataMode 在启动前按
+	// 页内开关裁决（默认共享 ~/.termora，与机主自装的 Termora 同一份数据）。
+	// 旧实现无条件建它，把每个托管版本隔成空环境——"从 Hanxi 打开 Termora 没数据"
+	// 与"删版本连带删数据"两个坑都出自这一行（TROUBLESHOOTING #151）。
 
 	meta := artifact.Meta{
 		Entry:       exeName,
@@ -274,8 +274,11 @@ func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, on
 
 // ImportLocal 把本机已有 Termora 便携目录（jpackage app-image 解压件）
 // 收纳为托管版本：整树复制保数据（data\ 内的会话/密钥索引"随目录走"，
-// 导入即继承——用户预期是"接着用"，不是"重新配"）。data\ 缺失不伪造
-// 用户数据，但落位后由启动前 ensure（service）补齐自包含。
+// 导入即继承——用户预期是"接着用"，不是"重新配"）。data\ 缺失不伪造用户
+// 数据：本包不再补建它，是否启用独立数据由 service 层「数据模式」在启动前
+// 裁决。因此**导入件自带 data\ 时，在默认的共享模式下首次启动会把它改名
+// 停用**（data.disabled-<时刻>，内容原样保留）；想接着用导入那份数据，就
+// 在页内勾上「数据随版本独立」再启动，改回原名亦可回退。
 func (m *Manager) ImportLocal(srcDir string) (TermoraVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
 	srcExe, ok := findPayloadExe(srcDir)

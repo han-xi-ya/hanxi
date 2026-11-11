@@ -30,6 +30,11 @@ import (
 // 原生家族，30s 保守上限（就绪判据=单实例互斥体在位，见 instance 包）。
 const readyTimeout = 30 * time.Second
 
+// termoraDataDirName 上游绿色版的"自带数据"激活器目录名：与 exe 同级存在即数据自
+// 包含，缺失则回落 ~/.termora。本模块是否创建它由「数据模式」开关裁决（见
+// applyDataMode 与 store.portableData 注记），落位链不再无条件建它。
+const termoraDataDirName = "data"
+
 // externalQuitRisk confirm-force 档的知情文案（N3 终裁"打扰类"点名 Termora：
 // 中断有实际损失——活动 SSH 会话断开、终端现场丢失；确认框与回执共用同一事实源）。
 const externalQuitRisk = "该 Termora 是在 Hanxi 之外自行启动的：优雅退出未生效，强制结束将立即断开其全部活动 SSH 会话并丢失终端现场。"
@@ -371,10 +376,11 @@ func (s *TermoraService) OpenWindow() (ControlOutcome, error) {
 		if err != nil {
 			return ControlOutcome{}, err
 		}
-		// portable 激活器：exe 同级 data\ 存在即数据自包含（上游绿色版实证
-		// 语义）；下载链已在落位时建过，此处幂等补齐导入件的缺省场景。
-		if err := os.MkdirAll(filepath.Join(filepath.Dir(exe), "data"), 0755); err != nil {
-			return ControlOutcome{}, fmt.Errorf("创建 Termora 数据目录失败: %w", err)
+		// 数据模式裁决（默认共享 ~/.termora；独立模式补建 exe 同级 data\ 激活器，
+		// 共享模式把该版本遗留的 data\ 改名停用留档）——细节与失败语义见 applyDataMode。
+		note, dErr := s.applyDataMode(exe)
+		if dErr != nil {
+			return ControlOutcome{}, dErr
 		}
 		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe, Detached: !s.store.GetFollowOnExit()}); err != nil {
 			return ControlOutcome{}, fmt.Errorf("启动 Termora 失败: %w", err)
@@ -389,7 +395,7 @@ func (s *TermoraService) OpenWindow() (ControlOutcome, error) {
 			_ = s.store.SetActive(v)
 		}
 		return ControlOutcome{Action: "started",
-			Message: fmt.Sprintf("Termora %s 已启动", v)}, nil
+			Message: fmt.Sprintf("Termora %s 已启动%s", v, note)}, nil
 	}
 }
 
@@ -487,6 +493,101 @@ func (s *TermoraService) SetFollowOnExit(next bool) (string, error) {
 		return "已开启：Hanxi 退出时一并关闭托管实例（含其活动会话）", nil
 	}
 	return "已关闭：Hanxi 退出不影响 Termora，托管实例继续独立运行（下次启动生效）", nil
+}
+
+// ---------- 数据模式（共享 / 独立） ----------
+
+// applyDataMode 按数据模式裁决 exe 同级的 `data` 激活器（Termora 认它=自带数据根，
+// 上游绿色版语义；缺失则回落 `~/.termora`）：
+//   - 独立模式：幂等补齐 `data`；
+//   - 共享模式（默认）：`data` 在场就**改名停用**（`data.disabled-<UTC 时刻>`），
+//     内容一个字节不动——隔离期攒下的会话、凭据索引、今天手工复制进去的副本全留着，
+//     改回原名即回退；不在场则零动作。
+//
+// 改名失败（Termora 正在运行、JVM 占用目录等）一律如实上抛并**中止启动**：带着
+// "半隔离半共享"的不一致状态把程序拉起来，比不启动更坏（用户会以为数据又丢了）。
+// 返回一句人话并入启动回执；无需动作时为空串。
+func (s *TermoraService) applyDataMode(exe string) (string, error) {
+	dir := filepath.Join(filepath.Dir(exe), termoraDataDirName)
+	if s.store.GetPortableData() {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", fmt.Errorf("创建 Termora 独立数据目录失败: %w", err)
+		}
+		return "", nil
+	}
+	fi, err := os.Stat(dir)
+	if err != nil || !fi.IsDir() {
+		return "", nil // 本就用 ~/.termora，无需处置
+	}
+	disabled := filepath.Join(filepath.Dir(exe),
+		termoraDataDirName+".disabled-"+time.Now().UTC().Format("20060102-150405"))
+	if err := os.Rename(dir, disabled); err != nil {
+		return "", fmt.Errorf("该版本仍带着独立数据目录 data\\，改名停用失败（Termora 若正在运行请先退出）: %w", err)
+	}
+	slog.Info("termora: 数据模式=共享，已停用该版本的独立数据目录", "from", dir, "to", disabled)
+	return fmt.Sprintf("；已停用该版本的独立数据副本（改名留档 %s，内容未动，想回退改回 data 即可）", filepath.Base(disabled)), nil
+}
+
+// dataDirDisplayRoot 返回"当前真正生效"的数据根（页上「打开数据目录」直达用）。
+func (s *TermoraService) dataDirDisplayRoot() (string, error) {
+	if !s.store.GetPortableData() {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("无法定位用户主目录（Termora 数据根 ~/.termora）: %w", err)
+		}
+		return filepath.Join(home, ".termora"), nil
+	}
+	_, exe, err := s.resolveActiveVersion()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(exe), termoraDataDirName), nil
+}
+
+// GetPortableData 返回数据模式：false=共享 ~/.termora（默认，与你自己装的 Termora
+// 同一份数据）；true=独立（数据随版本目录 data\，多版本各一份）。
+func (s *TermoraService) GetPortableData() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+	return s.store.GetPortableData(), nil
+}
+
+// SetPortableData 切换数据模式（下一次启动由 applyDataMode 兑现：建 data 或把它
+// 改名停用，两者都不删内容）。
+func (s *TermoraService) SetPortableData(next bool) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	if err := s.store.SetPortableData(next); err != nil {
+		return "", err
+	}
+	if next {
+		return "已切为「独立」：下次启动为每个版本建 data\\ 自带数据，与你日常那份 Termora 互不相干（下次启动生效）", nil
+	}
+	return "已切为「共享」：下次启动改用 ~/.termora，与你日常那份 Termora 同一份数据；该版本已有的 data\\ 会被改名停用留档，不删（下次启动生效）", nil
+}
+
+// OpenDataDir 在资源管理器中打开"当前生效"的数据根（共享=~/.termora，独立=版本目录
+// data\\）；目录不存在时如实报错，不空开一个 explorer 窗口。
+func (s *TermoraService) OpenDataDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	dir, err := s.dataDirDisplayRoot()
+	if err != nil {
+		return err
+	}
+	if fi, serr := os.Stat(dir); serr != nil || !fi.IsDir() {
+		return fmt.Errorf("数据目录尚未生成或不可访问: %s（先用一次 Termora 再回来打开）", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
 }
 
 // Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。

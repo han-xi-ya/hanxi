@@ -56,6 +56,15 @@ export function GetFollowOnExit() {
 }
 
 /**
+ * GetPortableData 返回数据模式：false=共享 ~/.termora（默认，与你自己装的 Termora
+ * 同一份数据）；true=独立（数据随版本目录 data\，多版本各一份）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetPortableData() {
+    return $Call.ByID(1059418580);
+}
+
+/**
  * GetStatus 返回引擎状态快照；读取前做一次外部探针校正（瞬时枚举，
  * 内核在运行/启动/退出中自行短路——external 感知为拉取式，前端定时刷新即得）。
  * @returns {$CancellablePromise<instance$0.Snapshot>}
@@ -89,6 +98,15 @@ export function ListInstalledVersions() {
  */
 export function ListReleases() {
     return $Call.ByID(2628767847);
+}
+
+/**
+ * OpenDataDir 在资源管理器中打开"当前生效"的数据根（共享=~/.termora，独立=版本目录
+ * data\\）；目录不存在时如实报错，不空开一个 explorer 窗口。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenDataDir() {
+    return $Call.ByID(1118027140);
 }
 
 /**
@@ -171,6 +189,16 @@ export function SetActiveVersion(targetVersion) {
  */
 export function SetFollowOnExit(next) {
     return $Call.ByID(2979085099, next);
+}
+
+/**
+ * SetPortableData 切换数据模式（下一次启动由 applyDataMode 兑现：建 data 或把它
+ * 改名停用，两者都不删内容）。
+ * @param {boolean} next
+ * @returns {$CancellablePromise<string>}
+ */
+export function SetPortableData(next) {
+    return $Call.ByID(1905646248, next);
 }
 
 /**

@@ -144,14 +144,14 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
         return { tone: 'error', text: s.error || 'Termora 异常退出' }
       }
       if (s.state === 'running') {
-        return { tone: 'ok', text: '托管实例运行中：SSH/Sftp 会话在其自有窗口进行（portable 数据在版本目录 data\\ 内自包含）。' }
+        return { tone: 'ok', text: '托管实例运行中：SSH/Sftp 会话在其自有窗口进行（数据位置见联动区「数据目录」钮：默认共享 ~/.termora，独立模式才在本版本目录 data\\ 内）。' }
       }
       return null
     },
 
     hint: (s) => {
       if (s.state === 'stopped') {
-        return '尚未运行：点击「打开窗口」冷启动托管实例（JVM 首启约 2~10 秒）。会话凭据与索引保存在版本目录 data\\ 内，卸载版本前请先迁出。'
+        return '尚未运行：点击「打开窗口」冷启动托管实例（JVM 首启约 2~10 秒）。主机与会话索引默认与本机自装的 Termora 共享 ~/.termora——升级换版本不丢数据；切到「数据随版本独立」才改用版本目录 data\\。'
       }
       if (s.state === 'starting') {
         return '正在拉起 Termora（JVM + Swing 初始化，请稍候）…'
@@ -167,6 +167,7 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
         '便携包下载自 GitHub Releases（windows-x86-64.zip，官方 sha256 摘要四层校验；自带 JRE，不依赖系统 Java）',
         '上游 2.x 线全部以预发布（beta）发布——beta 即事实主干，列表如实全列、预发布徽标不藏行',
         '上游双许可（AGPL-3.0 或商业许可）：hanxi 仅转链官方分发，不搬运二进制',
+        '数据模式（联动区开关，默认共享）：共享=~/.termora，与你自己打开的 Termora 同一份主机与会话，升级/删版本都不动它；独立=该版本目录内 data\\ 自带一份，多版本各不干涉。切换在下次启动兑现，遗留的独立副本改名 data.disabled-<时刻> 留档可回退',
       ],
       firstUseEmpty: '尚未安装 Termora —— 下载官方便携包，或「导入本地安装」把现有解压目录收纳进来',
       remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
@@ -177,14 +178,31 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
       followOnExit: {
         get: () => TermoraAPI.GetFollowOnExit(),
         async set(next): Promise<ManagedActionResult> {
-          await TermoraAPI.SetFollowOnExit(next)
-          return {
-            message: next
-              ? '已开启：Hanxi 退出时一并关闭托管实例（含其活动会话）'
-              : '已关闭：Hanxi 退出不影响 Termora，托管实例继续独立运行（下次启动生效）',
-          }
+          const msg = await TermoraAPI.SetFollowOnExit(next)
+          return { message: msg }
         },
         note: '（你自行打开的 Termora 窗口从不受 Hanxi 退出影响）',
+      },
+      // 数据模式（2026-11-11）：默认共享 ~/.termora——与机主自装的 Termora 同一份
+      // 主机/会话/凭据索引，升级换版本不再"打开是空的"；勾上=独立，为该版本补建
+      // exe 同级 data\ 激活器（要干净试验场或"导入件接着用它自带的数据"时用）。
+      // 切换本身不动文件，下一次启动由后端 applyDataMode 兑现（建 / 改名停用留档）。
+      dataMode: {
+        label: '数据随版本独立（默认共享 ~/.termora）',
+        note: '（共享=与你自己打开的 Termora 用同一份主机与会话，升级不丢；独立=本版本自带 data\\，切换在下次启动生效，被停用的旧副本改名留档不删）',
+        get: () => TermoraAPI.GetPortableData(),
+        async set(next): Promise<ManagedActionResult> {
+          const msg = await TermoraAPI.SetPortableData(next)
+          return { message: msg }
+        },
+      },
+      dataDir: {
+        label: '🗂 数据目录',
+        title: '在资源管理器中打开当前生效的数据根（共享→~/.termora，独立→版本目录 data\\）',
+        async open(): Promise<ManagedActionResult> {
+          await TermoraAPI.OpenDataDir()
+          return {}
+        },
       },
       repo: {
         url: () => TermoraAPI.RepositoryURL(),
