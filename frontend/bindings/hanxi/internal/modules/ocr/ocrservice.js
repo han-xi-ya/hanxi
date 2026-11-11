@@ -127,6 +127,15 @@ export function GetSnipHotkey() {
 }
 
 /**
+ * GetSnipOverlay 返回「框选截屏识别」入口开关（默认关，定位收窄的理由见
+ * store.snipOverlay 字段注记：与已托管 AirSnip 的截图取字重叠且更占资源）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetSnipOverlay() {
+    return $Call.ByID(2657620813);
+}
+
+/**
  * GetSnipResult 卡片挂载/刷新时拉取当前结果（事件双保险，常驻窗体不漏帧）。
  * found 仅在存在成功结果时为真——取消帧不进卡片通道（showSnipCard 只在成功时调用）。
  * Wave 3 口径：补 error 通道，门拒绝如实上抛，禁止回 (空, false) 伪造"暂无结果"
@@ -388,6 +397,17 @@ export function SetSnipHotkeyBinding(b) {
  */
 export function SetSnipHotkeyEnabled(v) {
     return $Call.ByID(499605026, v);
+}
+
+/**
+ * SetSnipOverlay 开/关「框选截屏识别」入口并落盘。轮盘/托盘命令候选按本开关实时
+ * 出列（见 module.TrayCommands），托盘菜单在下次重建时收敛；识别链本身不受影响，
+ * 页内按钮与 RPC 也走同一判据，不存在"入口关了但还能被旁路调起"的缝隙。
+ * @param {boolean} v
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetSnipOverlay(v) {
+    return $Call.ByID(2511401353, v);
 }
 
 /**

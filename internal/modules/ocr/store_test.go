@@ -20,6 +20,14 @@ func TestStoreDefaults(t *testing.T) {
 	if s.GetExePath() != "" {
 		t.Fatal("exePath 默认应为空 = 自动发现")
 	}
+	// 截屏入口默认关（2026-11-11 拍板：与 AirSnip 截图取字重叠且更占资源）；
+	// 剪贴板识图热键默认开不受影响。
+	if s.GetSnipOverlay() {
+		t.Fatal("snipOverlay 默认应为 false")
+	}
+	if on, _ := s.GetSnipHotkey(); !on {
+		t.Fatal("snipHotkeyEnabled 默认仍应为 true")
+	}
 }
 
 func TestStoreRoundTripAndValidation(t *testing.T) {
@@ -43,6 +51,16 @@ func TestStoreRoundTripAndValidation(t *testing.T) {
 	s2 := newOcrStore(dir)
 	if s2.GetListenPort() != 54000 {
 		t.Fatalf("重载端口 = %d, want 54000", s2.GetListenPort())
+	}
+	// 截屏入口开关同样落盘可复现（关→开→重载仍开）
+	if s2.GetSnipOverlay() {
+		t.Fatal("未设置过的入口开关重载后仍应为关")
+	}
+	if err := s2.SetSnipOverlay(true); err != nil {
+		t.Fatalf("SetSnipOverlay: %v", err)
+	}
+	if !newOcrStore(dir).GetSnipOverlay() {
+		t.Fatal("入口开关未落盘")
 	}
 
 	// 空串 = 恢复自动发现，合法

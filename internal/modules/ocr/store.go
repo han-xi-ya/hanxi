@@ -42,6 +42,14 @@ type ocrStore struct {
 	snipHotkeyEnabled bool   // 全局热键"剪贴板识图"开关（默认开）
 	snipHotkey        string // 键位（规范化串，默认 Ctrl+Alt+T；纯键位不开——拍板决策）
 
+	// snipOverlay：「框选截屏识别」入口开关（**默认关**，2026-11-11 机主拍板）。
+	// 定位收窄的理由：截屏取字这条路与已托管的 AirSnip 正面重叠且更贵——AirSnip 常驻
+	// 1.2MB、按一键出字；本入口要拉起 hanxi-ocr 服务 + 几十~几百 MB 引擎，还固有地
+	// 覆写用户剪贴板（覆盖层以剪贴板交付，取消时才能回写还原）。OCR 的不可替代面是
+	// "任意图来源（拖入/粘贴/剪贴板）+ 疑难图精度 + 历史留档"，剪贴板识图那条保留默认开。
+	// 关掉只摘入口（轮盘命令 + 页内按钮 + RPC 拒绝），识别链本身一行不动，页上可自取。
+	snipOverlay bool
+
 	// 悬浮结果卡尺寸（DIP，N42②）：用户拖动右下角缩放手柄后记忆，下次弹出复现；
 	// 与字号档位（前端 localStorage）正交独立。越界装载即钳制。
 	cardW int
@@ -75,8 +83,9 @@ type ocrConfig struct {
 	AutoCopy     *bool          `json:"autoCopy"`
 	ListenPort   *int           `json:"listenPort"`
 
-	SnipHotkeyEnabled *bool   `json:"snipHotkeyEnabled"`
-	SnipHotkey        *string `json:"snipHotkey"`
+	SnipHotkeyEnabled  *bool   `json:"snipHotkeyEnabled"`
+	SnipHotkey         *string `json:"snipHotkey"`
+	SnipOverlayEnabled *bool   `json:"snipOverlayEnabled"` // 「框选截屏识别」入口开关（缺省=关）
 
 	SnipCardSize *cardSizeConfig `json:"snipCardSize"`
 }
@@ -102,6 +111,7 @@ func newOcrStore(dir string) *ocrStore {
 
 		snipHotkeyEnabled: true, // 拍板：默认开（与截屏工作流同族；冲突时设置页红字引导改键）
 		snipHotkey:        defaultSnipHotkey,
+		snipOverlay:       false, // 拍板 2026-11-11：框选截屏识别入口默认关（与 AirSnip 重叠且更贵），页上自取
 
 		cardW: cardWidthDIP, // 建窗默认尺寸（snipcard.go 常量单一来源）
 		cardH: cardHeightDIP,
@@ -212,6 +222,9 @@ func (s *ocrStore) load() error {
 	if cfg.SnipHotkeyEnabled != nil {
 		s.snipHotkeyEnabled = *cfg.SnipHotkeyEnabled
 	}
+	if cfg.SnipOverlayEnabled != nil {
+		s.snipOverlay = *cfg.SnipOverlayEnabled
+	}
 	if cfg.SnipHotkey != nil {
 		// 手改坏值容忍：规范化失败则回落默认键位（仿 listenPort 越界兜底策略）
 		if norm, err := NormalizeSnipHotkey(*cfg.SnipHotkey); err == nil {
@@ -240,8 +253,9 @@ func (s *ocrStore) saveLocked() error {
 		AutoCopy:     &s.autoCopy,
 		ListenPort:   &s.listenPort,
 
-		SnipHotkeyEnabled: &s.snipHotkeyEnabled,
-		SnipHotkey:        &s.snipHotkey,
+		SnipHotkeyEnabled:  &s.snipHotkeyEnabled,
+		SnipOverlayEnabled: &s.snipOverlay,
+		SnipHotkey:         &s.snipHotkey,
 
 		SnipCardSize: &cardSizeConfig{W: s.cardW, H: s.cardH},
 	})
@@ -411,6 +425,32 @@ func (s *ocrStore) SetSnipHotkeyEnabled(v bool) error {
 	s.snipHotkeyEnabled = v
 	if err := s.saveLocked(); err != nil {
 		s.snipHotkeyEnabled = prev
+		return err
+	}
+	return nil
+}
+
+// ---------- 框选截屏识别入口偏好（默认关，见 snipOverlay 字段注记） ----------
+
+// GetSnipOverlay 返回「框选截屏识别」入口开关（默认 false）。
+func (s *ocrStore) GetSnipOverlay() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.snipOverlay
+}
+
+// SetSnipOverlay 设定入口开关并落盘；落盘失败回滚内存态（与热键开关同纪律，
+// 绝不允许"页上显示已开、下次启动又变关"的双真相）。
+func (s *ocrStore) SetSnipOverlay(v bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.snipOverlay == v {
+		return nil
+	}
+	prev := s.snipOverlay
+	s.snipOverlay = v
+	if err := s.saveLocked(); err != nil {
+		s.snipOverlay = prev
 		return err
 	}
 	return nil

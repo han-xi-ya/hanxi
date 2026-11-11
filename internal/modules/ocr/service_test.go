@@ -660,9 +660,67 @@ func (f *fakeSnip) GrabImage() ([]byte, bool, error) {
 func (f *fakeSnip) InvokeOverlay() error         { return nil }
 func (f *fakeSnip) CursorPos() (int, int, error) { return f.cursorXY[0], f.cursorXY[1], nil }
 
+// 截屏入口默认关（2026-11-11 拍板），本组用例测的是"开启之后"的链路语义，
+// 先显式开闸——别把开关态藏进公共夹具，默认值本身由 TestSnipOverlayDefaults 钉。
+func enableSnipOverlay(t *testing.T, s *OcrService) {
+	t.Helper()
+	if err := s.store.SetSnipOverlay(true); err != nil {
+		t.Fatalf("开启截屏入口: %v", err)
+	}
+}
+
+func TestSnipOverlayDefaults(t *testing.T) {
+	s := newTestService(t, "")
+	if s.store.GetSnipOverlay() {
+		t.Fatal("「框选截屏识别」入口必须默认关（与 AirSnip 截图取字重叠且更占资源）")
+	}
+	// 默认关时执行链直接拒绝，且指引给出两条替代路（页内开关 / 剪贴板识图）
+	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "入口已停用") {
+		t.Fatalf("停用态应拒绝执行: %v", err)
+	}
+	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "剪贴板识图") {
+		t.Fatalf("拒绝文案须指路替代入口: %v", err)
+	}
+	// 开闸后不再被开关挡（后续失败来自"无组件"那条既有指引，证明挡点已让位）
+	if err := s.store.SetSnipOverlay(true); err != nil {
+		t.Fatalf("SetSnipOverlay: %v", err)
+	}
+	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "导入") {
+		t.Fatalf("开闸后应走到链路内部: %v", err)
+	}
+	// 停用入口不影响剪贴板识图那条路（它只读剪贴板，不拉覆盖层）
+	s.snip = &fakeSnip{}
+	if _, err := s.RecognizeClipboardImage(); err != nil && strings.Contains(err.Error(), "入口已停用") {
+		t.Fatalf("剪贴板识图不该受截屏入口开关影响: %v", err)
+	}
+}
+
+func TestModuleTrayCommandsHideDisabledSnip(t *testing.T) {
+	svc := newTestService(t, "")
+	m := &Module{svc: svc}
+
+	ids := func() []string {
+		var out []string
+		for _, c := range m.TrayCommands() {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+	if got := strings.Join(ids(), ","); got != "snip-clipboard" {
+		t.Fatalf("默认关态命令集 = %q, want 只剩 snip-clipboard", got)
+	}
+	if err := svc.store.SetSnipOverlay(true); err != nil {
+		t.Fatalf("开闸: %v", err)
+	}
+	if got := strings.Join(ids(), ","); got != "snip,snip-clipboard" {
+		t.Fatalf("开闸后命令集 = %q, want snip,snip-clipboard", got)
+	}
+}
+
 func TestSnipReentrancyGuard(t *testing.T) {
 	s := newTestService(t, "")
 	s.snip = &fakeSnip{}
+	enableSnipOverlay(t, s)
 	s.snipMu.Lock() // 模拟进行中
 	defer s.snipMu.Unlock()
 	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "进行中") {
@@ -674,6 +732,7 @@ func TestSnipRequiresComponent(t *testing.T) {
 	// stopped + 自动发现失败（exeDir 空目录无同级组件）→ 中文导入指引
 	s := newTestService(t, "")
 	s.snip = &fakeSnip{}
+	enableSnipOverlay(t, s)
 	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "导入") {
 		t.Fatalf("无组件应给导入指引: %v", err)
 	}

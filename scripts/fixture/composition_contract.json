@@ -427,12 +427,14 @@
     "modules/ocr/ocrservice.js": [
       "GetEngines",
       "GetSnipHotkey",
+      "GetSnipOverlay",
       "GetSnipResult",
       "HandleNativeDrop",
       "RecognizeClipboardImage",
       "SetActiveEngine",
       "SetSnipHotkey",
       "SetSnipHotkeyEnabled",
+      "SetSnipOverlay",
       "SnipAndRecognize",
       "SnipCardDismiss",
       "SnipCopyText"

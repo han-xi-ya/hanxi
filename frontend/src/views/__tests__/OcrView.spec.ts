@@ -45,6 +45,8 @@ const svc = vi.hoisted(() => ({
   SnipCardDismiss: vi.fn(),
   GetAutoCopy: vi.fn(),
   SetAutoCopy: vi.fn(),
+  GetSnipOverlay: vi.fn(),
+  SetSnipOverlay: vi.fn(),
   Logs: vi.fn(),
 }))
 
@@ -99,6 +101,7 @@ function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetAutoCopy.mockResolvedValue(true)
+  svc.GetSnipOverlay.mockResolvedValue(true) // 用例默认在"入口已开"形态下跑（后端缺省是关）
   hist.List.mockResolvedValue([]) // 历史面板自取数：默认空桶
   svc.GetSnipHotkey.mockResolvedValue({ enabled: true, accel: 'Ctrl+Alt+T', registered: true })
 }
@@ -634,6 +637,40 @@ describe('OcrView 框选截屏识别', () => {
     await box.setValue(false)
     await flushPromises()
     expect(svc.SetAutoCopy).toHaveBeenCalledWith(false)
+    wrapper.unmount()
+  })
+
+  // 框选截屏入口默认关（后端拍板）：入口关掉时页头按钮整个消失，不是"灰着能点"
+  it('框选入口关闭：页头不出现「框选识别」按钮，开关如实回显未勾', async () => {
+    stubStatus(runningState)
+    svc.GetSnipOverlay.mockResolvedValue(false)
+    const wrapper = await mountView()
+    expect(wrapper.findAll('.btn').some((b) => b.text().includes('框选识别'))).toBe(false)
+    await wrapper.findAll('.btn').find((b) => b.text().includes('服务设置'))!.trigger('click')
+    const row = wrapper.findAll('label.ocr-set-follow').find((l) => l.text().includes('框选截屏识别'))!
+    expect((row.find('input').element as HTMLInputElement).checked).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('框选入口开关：勾上即落盘并让页头按钮回到场；失败回滚复选框并报错', async () => {
+    stubStatus(runningState)
+    svc.GetSnipOverlay.mockResolvedValue(false)
+    const wrapper = await mountView()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('服务设置'))!.trigger('click')
+    const input = wrapper.findAll('label.ocr-set-follow').find((l) => l.text().includes('框选截屏识别'))!.find('input')
+
+    svc.SetSnipOverlay.mockResolvedValue(undefined)
+    await input.setValue(true)
+    await flushPromises()
+    expect(svc.SetSnipOverlay).toHaveBeenCalledWith(true)
+    expect(wrapper.findAll('.btn').some((b) => b.text().includes('框选识别'))).toBe(true)
+
+    // 落盘失败：复选框必须退回未勾，不留"显示已开、点下去被拒"的假态
+    svc.SetSnipOverlay.mockRejectedValue(new Error('磁盘只读'))
+    await input.setValue(false)
+    await flushPromises()
+    expect((input.element as HTMLInputElement).checked).toBe(true)
+    expect(useToast().toastMsg.value).toContain('磁盘只读')
     wrapper.unmount()
   })
 })

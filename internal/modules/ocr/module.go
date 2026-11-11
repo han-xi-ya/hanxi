@@ -59,9 +59,24 @@ func (m *Module) Services() []extapi.Service {
 func (m *Module) Service() *OcrService { return m.svc }
 
 // TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向轮盘/托盘命令候选
-// 目录暴露「框选截屏识别」（Key=ocr/snip）与「剪贴板识图」（Key=ocr/snip-clipboard，
-// 默认全局热键 Ctrl+Alt+T 的派发目标），宿主独立 goroutine 调用，内部防重入。
+// 目录暴露「剪贴板识图」（Key=ocr/snip-clipboard，默认全局热键 Ctrl+Alt+T 的派发
+// 目标）；「框选截屏识别」（Key=ocr/snip）**按入口开关出列**（默认关，理由见
+// store.snipOverlay 注记）——判据直读 store 不过调用门：候选目录由宿主在独立
+// goroutine 实时拉取，模块停用/优雅 drain 期也要能给出诚实的命令集，而不是被门
+// 拒成"这条命令消失了"（#142：不在 RPC 面上的取数路径，门的语义要单独设计）。
+// 宿主独立 goroutine 调用，内部防重入。
 func (m *Module) TrayCommands() []extapi.TrayCommand {
+	snipClipboard := extapi.TrayCommand{
+		ID:    "snip-clipboard",
+		Label: "剪贴板识图（OCR）",
+		Run: func(ctx context.Context) error {
+			_, err := m.svc.RecognizeClipboardImage()
+			return err
+		},
+	}
+	if !m.svc.store.GetSnipOverlay() {
+		return []extapi.TrayCommand{snipClipboard}
+	}
 	return []extapi.TrayCommand{
 		{
 			ID:    "snip",
@@ -71,14 +86,7 @@ func (m *Module) TrayCommands() []extapi.TrayCommand {
 				return err
 			},
 		},
-		{
-			ID:    "snip-clipboard",
-			Label: "剪贴板识图（OCR）",
-			Run: func(ctx context.Context) error {
-				_, err := m.svc.RecognizeClipboardImage()
-				return err
-			},
-		},
+		snipClipboard,
 	}
 }
 

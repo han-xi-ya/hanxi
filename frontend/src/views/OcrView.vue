@@ -37,6 +37,9 @@ const showSettings = ref(false)
 const portInput = ref('')
 const followOnExit = ref(true)
 const autoCopy = ref(true)
+// snipOverlay：自家「框选截屏识别」入口开关（后端默认关——截屏取字这条路与已托管的
+// AirSnip 重叠且更占资源；本页仍可在「服务设置」里自行打开）。
+const snipOverlay = ref(false)
 const hotkey = ref<SnipHotkeyState | null>(null) // 剪贴板识图热键配置（null=未取得）
 
 const image = ref<ImageRef | null>(null)
@@ -53,6 +56,7 @@ const { busy: readingFile, run: runRead } = useAsyncAction()
 const { busy: portBusy, run: runPort } = useAsyncAction()
 const { busy: followBusy, run: runFollow } = useAsyncAction()
 const { busy: autoCopyBusy, run: runAutoCopy } = useAsyncAction()
+const { busy: snipOverlayBusy, run: runSnipOverlay } = useAsyncAction()
 const switchingId = ref('') // 切换进行中的目标引擎（行内按钮态）
 const uninstallingKey = ref('') // 卸载进行中的版本（engine-version 行内按钮态）
 
@@ -261,6 +265,7 @@ async function loadSettings() {
     portInput.value = String(await OcrAPI.GetListenPort())
     followOnExit.value = await OcrAPI.GetFollowOnExit()
     autoCopy.value = await OcrAPI.GetAutoCopy()
+    snipOverlay.value = await OcrAPI.GetSnipOverlay()
   } catch (e) {
     console.warn('ocr settings load failed:', getErrorMessage(e))
   }
@@ -389,6 +394,21 @@ async function toggleAutoCopy(v: boolean) {
     showToast(v ? '截屏识别后将自动复制文字' : '不再自动复制，可在卡片内手动选取')
   } else {
     autoCopy.value = !v
+    showToast(getErrorMessage(res.error))
+  }
+}
+
+// 自家「框选截屏识别」入口：开后页头按钮与轮盘/托盘命令同时回到场（命令候选按
+// 后端开关实时出列）；失败回滚复选框，绝不留"看着开了、点下去又被拒"的假态。
+async function toggleSnipOverlay(v: boolean) {
+  snipOverlay.value = v
+  const res = await runSnipOverlay(() => OcrAPI.SetSnipOverlay(v))
+  if (res.ok) {
+    showToast(v
+      ? '已开启页内「框选识别」与轮盘命令（托盘菜单下次重建时回到场）'
+      : '已停用页内「框选识别」；截图取字可直接用 AirSnip（截图后按 T）')
+  } else {
+    snipOverlay.value = !v
     showToast(getErrorMessage(res.error))
   }
 }
@@ -532,7 +552,7 @@ onMounted(() => {
   <section class="page ocr-view">
     <PageHeader
       title="文字识别"
-      subtitle="本地 hanxi-ocr 服务，双引擎并存：PP-OCR 开源引擎（公开可获取，自行导入）或微信引擎组件（私发）。拖入、粘贴或选择图片即可识别，全程离线不联网。"
+      subtitle="把手头的图变成文字：拖入、粘贴或选择文件即可识别，复制图片后还能按全局热键直接识图。本地 hanxi-ocr 服务，双引擎并存：PP-OCR 开源引擎（公开可获取，自行导入）或微信引擎组件（私发），全程离线不联网。框选截屏取字默认交给 AirSnip，本页「服务设置」可重新开启自家入口。"
     >
       <template #actions>
         <div class="ocr-head-actions">
@@ -541,7 +561,7 @@ onMounted(() => {
           <span v-if="online && state!.version" class="ocr-ver" :title="`上游型号 ${state!.engine}`">
             <template v-if="activeEngineLabel">{{ activeEngineLabel }} · </template>{{ state!.version }}<template v-if="!state!.engineRunning"> · 引擎预热中</template>
           </span>
-          <button class="btn btn-secondary btn-small" :disabled="snipBusy" title="唤起系统截屏，框选区域即识别（服务未运行时自动拉起）" @click="snipRecognize">
+          <button v-if="snipOverlay" class="btn btn-secondary btn-small" :disabled="snipBusy" title="唤起系统截屏，框选区域即识别（服务未运行时自动拉起；入口可在「服务设置」里开关）" @click="snipRecognize">
             {{ snipBusy ? '截屏识别中…' : '📷 框选识别' }}
           </button>
           <button class="btn btn-secondary btn-small" :aria-expanded="showHistory" @click="showHistory = true" title="最近识别留档：图片路径与文本可一键回填">
@@ -680,6 +700,13 @@ onMounted(() => {
         <label class="ocr-set-follow">
           <input type="checkbox" :checked="autoCopy" :disabled="autoCopyBusy" @change="toggleAutoCopy(($event.target as HTMLInputElement).checked)" />
           识别后自动把文字复制到剪贴板（关闭后可在结果卡内手动选字）
+        </label>
+      </div>
+      <div class="ocr-set-row">
+        <span class="ocr-set-k">框选入口</span>
+        <label class="ocr-set-follow">
+          <input type="checkbox" :checked="snipOverlay" :disabled="snipOverlayBusy" @change="toggleSnipOverlay(($event.target as HTMLInputElement).checked)" />
+          在本页与鼠标轮盘保留「框选截屏识别」（默认关：截屏取字交给 AirSnip 更省——它常驻 1.2MB、按一键即出，本入口要拉起识别服务并覆写剪贴板）
         </label>
       </div>
       <div class="ocr-set-row ocr-hotkey-row">

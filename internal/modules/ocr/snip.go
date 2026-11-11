@@ -22,6 +22,29 @@ const (
 	snipStartWait   = 15 * time.Second // 恰有并发启动流程时轮询等待就绪
 )
 
+// GetSnipOverlay 返回「框选截屏识别」入口开关（默认关，定位收窄的理由见
+// store.snipOverlay 字段注记：与已托管 AirSnip 的截图取字重叠且更占资源）。
+func (s *OcrService) GetSnipOverlay() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+	return s.store.GetSnipOverlay(), nil
+}
+
+// SetSnipOverlay 开/关「框选截屏识别」入口并落盘。轮盘/托盘命令候选按本开关实时
+// 出列（见 module.TrayCommands），托盘菜单在下次重建时收敛；识别链本身不受影响，
+// 页内按钮与 RPC 也走同一判据，不存在"入口关了但还能被旁路调起"的缝隙。
+func (s *OcrService) SetSnipOverlay(v bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.store.SetSnipOverlay(v)
+}
+
 // SnipAndRecognize 唤起系统截屏覆盖层（ms-screenclip:），接住框选图像识别，
 // 成功后弹悬浮卡并按开关自动复制文字。业务失败以中文 error 返回
 // （命令派发链路与前端按钮的提示系统会接住）；用户放弃选区静默返回 Cancelled。
@@ -31,6 +54,13 @@ func (s *OcrService) SnipAndRecognize() (SnipResult, error) {
 		return SnipResult{}, gateErr
 	}
 	defer release()
+	if !s.store.GetSnipOverlay() {
+		_, accel := s.store.GetSnipHotkey()
+		return SnipResult{}, fmt.Errorf(
+			"「框选截屏识别」入口已停用（该能力与 AirSnip 的截图取字重叠、且要拉起识别服务）。"+
+				"要仍用本入口：在文字识别页打开开关。日常替代：AirSnip 截图后按 T，或复制图片后按 %s 走剪贴板识图",
+			accel)
+	}
 	if !s.snipMu.TryLock() {
 		return SnipResult{}, fmt.Errorf("截屏识别正在进行中，请稍候")
 	}
