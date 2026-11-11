@@ -413,12 +413,16 @@ export async function soleVersionUninstallNote(
   return ''
 }
 
-/** 随关/快捷方式/数据目录/仓库等辅助面条目（全可选，缺项自动隐藏）。 */
-export interface ManagedFollowOnExitSpec {
+/**
+ * 联动卡内的布尔开关行通用形状（原名 ManagedFollowOnExitSpec，2026-11-11 因
+ * 「数据模式」第二开关接入而正名：形状与"随 Hanxi 一起关闭"完全同构，仅词面与
+ * 后端 RPC 不同）。
+ */
+export interface ManagedToggleSpec {
   get(): PromiseLike<boolean>
   /** 失败请抛错（extras 卡统一 toast '设置失败: ' 并回滚勾选）。成功回执放 message。 */
   set(next: boolean): PromiseLike<ManagedActionResult | void>
-  /** 勾选行主文案，缺省「随 Hanxi 一起关闭」。 */
+  /** 勾选行主文案（由各键位给缺省，见 extras 消费件）。 */
   label?: string
   /** 主文案后的 dim 括注（模块差异话术）。 */
   note?: string
@@ -601,10 +605,16 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
   dangerBusy?: Ref<boolean>
 
   copy?: ManagedCopySpec
+  /** 随关/快捷方式/数据目录/仓库等辅助面条目（全可选，缺项自动隐藏）。 */
   extras?: {
-    followOnExit?: ManagedFollowOnExitSpec
+    followOnExit?: ManagedToggleSpec
+    /**
+     * 第二布尔开关行（当前唯一消费者：Termora「数据模式」——共享 ~/.termora /
+     * 独立随版本 data\）。形状与随关行同构，渲染位紧随其后；缺省不渲染。
+     */
+    dataMode?: ManagedToggleSpec
     shortcut?: ManagedShortcutSpec
-    /** 数据目录直达钮（OpenConfigDir 族），位于 extras-row 按钮组。 */
+    /** 数据目录直达钮（OpenConfigDir / OpenDataDir 族），位于 extras-row 按钮组。 */
     dataDir?: ManagedDataDirSpec
     repo?: ManagedRepoSpec
   }

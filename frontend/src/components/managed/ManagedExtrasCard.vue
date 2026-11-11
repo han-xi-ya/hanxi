@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// 联动与辅助设置卡：随 Hanxi 关闭勾选 + 桌面快捷方式 + 数据目录直达 +
+// 联动与辅助设置卡：随 Hanxi 关闭勾选 + 第二布尔开关行（dataMode，当前消费者
+// Termora「数据模式」共享/独立）+ 桌面快捷方式 + 数据目录直达 +
 // 仓库地址行（复制/浏览器打开）+「托管位置」数据行。条目全部可选：
 // adapter.extras 缺项自动隐藏，整卡无任何条目时由父级（Shell）不渲染本组件。
-// 首屏 GetFollowOnExit/RepositoryURL 并发拉取（视图原 loadExtras 语义收编）；
-// 勾选失败回滚到后端真实值（ref 变化驱动 checkbox 复位，现状口径）。
+// 首屏 GetFollowOnExit/数据模式/RepositoryURL 并发拉取（视图原 loadExtras 语义收编）；
+// 勾选失败回滚到后端真实值（ref 变化驱动 checkbox 复位，两行共用 runToggle）。
 // #extras-action 槽作用域 {snap,state,busy,store}；dataDirRow 行
 // 需注入 store（缺 store 时该行自动缺席，不炸独立挂载）。
 import { computed, onMounted, ref } from 'vue'
-import type { ManagedModuleAdapter } from './adapter'
+import type { Ref } from 'vue'
+import type { ManagedModuleAdapter, ManagedToggleSpec } from './adapter'
 import type { ManagedConsoleStore } from './store'
 import { useToast } from '../../composables/useToast'
 import { useClipboard } from '../../composables/useClipboard'
@@ -26,6 +28,7 @@ const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 
 const followOnExit = ref(false)
+const dataMode = ref(false)
 const repoUrl = ref('')
 
 /**
@@ -47,6 +50,14 @@ async function loadExtras() {
       }),
     )
   }
+  const mode = props.adapter.extras?.dataMode
+  if (mode) {
+    jobs.push(
+      Promise.resolve(mode.get()).then((v) => {
+        dataMode.value = v
+      }),
+    )
+  }
   if (repo) {
     jobs.push(
       Promise.resolve(repo.url()).then((u) => {
@@ -61,20 +72,29 @@ async function loadExtras() {
   }
 }
 
-async function onFollowToggle() {
-  const spec = props.adapter.extras?.followOnExit
+async function runToggle(spec: ManagedToggleSpec | undefined, cur: Ref<boolean>, fallback: () => string) {
   if (!spec) return
   await withLock(async () => {
-    const next = !followOnExit.value
-    followOnExit.value = next // 乐观翻转：ref 变化驱动勾选框即时跟进
+    const next = !cur.value
+    cur.value = next // 乐观翻转：ref 变化驱动勾选框即时跟进
     try {
       const res = await spec.set(next)
       if (res?.message !== undefined) showToast(res.message)
     } catch (e) {
-      followOnExit.value = !next // 失败回滚到后端真实值
-      showToast(`设置失败: ${getErrorMessage(e)}`)
+      cur.value = !next // 失败回滚到后端真实值
+      showToast(`${fallback()}: ${getErrorMessage(e)}`)
     }
   })
+}
+
+function onFollowToggle() {
+  return runToggle(props.adapter.extras?.followOnExit, followOnExit, () => '设置失败')
+}
+
+// 第二开关行（当前消费者：Termora「数据模式」共享/独立）——与随关行同规则：
+// 乐观翻转、后端回执原样弹出、失败回滚，绝不留"看着改了、后端没改"的假态。
+function onDataModeToggle() {
+  return runToggle(props.adapter.extras?.dataMode, dataMode, () => '设置失败')
 }
 
 async function createShortcut() {
@@ -156,6 +176,12 @@ onMounted(() => {
         <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
         <span>{{ adapter.extras.followOnExit.label ?? '随 Hanxi 一起关闭' }}
           <span class="hint-dim">{{ adapter.extras.followOnExit.note ?? '（关闭后 Hanxi 退出完全不影响该工具）' }}</span>
+        </span>
+      </label>
+      <label v-if="adapter.extras?.dataMode" class="toggle-label">
+        <input type="checkbox" :checked="dataMode" @change="onDataModeToggle" />
+        <span>{{ adapter.extras.dataMode.label ?? '数据随版本独立' }}
+          <span class="hint-dim">{{ adapter.extras.dataMode.note ?? '（默认与本机自装的同名工具共享数据）' }}</span>
         </span>
       </label>
       <button v-if="adapter.extras?.shortcut" class="btn btn-secondary btn-small" @click="createShortcut">
