@@ -5,7 +5,7 @@
 /**
  * OpProgress 官方路线长动作的进度事件载荷（envcheck:omp-official-op）。
  * @typedef {Object} OpProgress
- * @property {string} op - install/update/uninstall
+ * @property {string} op - install/update/repair/uninstall
  * @property {string} stage - running/done/error
  * @property {string} message - 如实备注（脚本输出摘要或错误）
  */

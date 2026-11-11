@@ -11,6 +11,15 @@
 // 负裁决照旧：不接管进程运行（纯 TUI）、不自建版本树（追更感知归 envcheck 的
 // ompversion 对照卡，两包分工见各自注释）。Windows 原语（注册表/广播/powershell
 // 执行）在 official_windows.go 装配，单测走接缝假件，绝不碰真注册表。
+//
+// 两条通道的归属（2026-11-11 机主实报"点了更新不太成功"后重切）：
+//   - 首装 → 官方 install.ps1 -Binary（目录里还没有 exe，脚本形态的 Git Bash 接线、
+//     PATH 写入这些"装"的职责只有它全懂）；
+//   - 更新/修复 → omp 自带 `omp update`（--force 为原地重装）。同一条 GitHub 通道实测
+//     对比：脚本走**整包重下** 244MB / 189 秒，`omp update` 走**增量补丁** 35.7MB / 6 秒，
+//     两者落位结果同为 18.18.8；而页内那张对照卡的指路文案本来就写着"官方脚本装用
+//     omp update"，按钮却去跑整包脚本，是自我矛盾。换件后对新进程生效，在跑的会话仍是
+//     旧镜像（自更新会明说 "Restart omp to use the new version"）。
 package ompofficial
 
 import (
@@ -24,7 +33,7 @@ import (
 
 // OpProgress 官方路线长动作的进度事件载荷（envcheck:omp-official-op）。
 type OpProgress struct {
-	Op      string `json:"op"`      // install/update/uninstall
+	Op      string `json:"op"`      // install/update/repair/uninstall
 	Stage   string `json:"stage"`   // running/done/error
 	Message string `json:"message"` // 如实备注（脚本输出摘要或错误）
 }
@@ -44,8 +53,9 @@ type Manager struct {
 	readPath  func() (string, error)
 	writePath func(string) error
 	broadcast func()
-	runScript func(ctx context.Context) (string, error) // 官方 install.ps1 -Binary
-	probeVer  func(exe string) string                   // 实跑 exe --version，失败空串
+	runScript func(ctx context.Context) (string, error)                         // 官方 install.ps1 -Binary
+	runUpdate func(ctx context.Context, exe string, force bool) (string, error) // omp 自带 `omp update`
+	probeVer  func(exe string) string                                           // 实跑 exe --version，失败空串
 }
 
 // officialScript 官方一行命令的等价执行体（显式 -Binary：hanxi 用户不一定有 bun，
@@ -144,6 +154,61 @@ func (m *Manager) RunScript(ctx context.Context) (string, error) {
 		}
 	}
 	return out, fmt.Errorf("官方脚本连试 %d 次仍失败（多为网络瞬断，可稍后再点一次更新）: %w", officialScriptAttempts, err)
+}
+
+// selfUpdateAttempts 自更新瞬时失败的整命令级重试上限。与脚本同判据：失败点多为
+// GitHub 传输瞬断（#35 同族），而 `omp update` 幂等——补丁下到临时件、校验 sha256
+// 后才换件，重跑无副作用。
+const selfUpdateAttempts = 3
+
+// SelfUpdate 走 omp 自带更新通道（force=true → `omp update --force` 原地重装，
+// 即页内"修复/重装"）。调用方须先确认装件在场（UpdateLatest 已代为分流）。
+// 成功判据与 RunScript 同纪律：命令零退出 + 跑完 exe 仍在场；瞬时失败自动重跑。
+func (m *Manager) SelfUpdate(ctx context.Context, force bool) (string, error) {
+	exe := m.exePath()
+	if !m.present() {
+		return "", fmt.Errorf("%s 里没有 omp.exe，无从自更新（请先用官方脚本安装）", m.dir)
+	}
+	var out string
+	var err error
+	for attempt := 1; attempt <= selfUpdateAttempts; attempt++ {
+		if cerr := ctx.Err(); cerr != nil {
+			return out, cerr
+		}
+		out, err = m.runUpdate(ctx, exe, force)
+		if err == nil {
+			if !m.present() {
+				return out, fmt.Errorf("omp update 执行完毕但 %s 不见了（换件半途失败？），请查看输出", exe)
+			}
+			if attempt > 1 {
+				out += fmt.Sprintf("\n（第 %d 次尝试成功，前 %d 次为瞬时失败已自动重试）", attempt, attempt-1)
+			}
+			return out, nil
+		}
+		if ctx.Err() != nil {
+			return out, ctx.Err() // 取消优先于重试判断（模块停用即停，别硬吃退避）
+		}
+		if attempt < selfUpdateAttempts {
+			select {
+			case <-time.After(retryBackoff(attempt)):
+			case <-ctx.Done():
+				return out, ctx.Err()
+			}
+		}
+	}
+	return out, fmt.Errorf("omp 自带更新连试 %d 次仍失败（多为网络瞬断，可稍后再点一次）: %w", selfUpdateAttempts, err)
+}
+
+// UpdateLatest 更新/修复重装的统一入口，按机器态分流（机主不必知道哪条通道）：
+//   - 装件在场 → omp 自带自更新（增量补丁、能换动正在运行的 exe）；
+//   - 装件不在场 → 官方脚本首装（此时无覆盖对象，脚本路线照常可用）。
+//
+// force 只影响自更新（true=已是最新也原地重装）。
+func (m *Manager) UpdateLatest(ctx context.Context, force bool) (string, error) {
+	if !m.present() {
+		return m.RunScript(ctx)
+	}
+	return m.SelfUpdate(ctx, force)
 }
 
 // Uninstall 卸载官方装件：删目录 + 剔除 PATH 条目 + 广播。

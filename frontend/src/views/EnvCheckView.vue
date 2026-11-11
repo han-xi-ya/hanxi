@@ -67,7 +67,7 @@ async function loadOmpOfficial() {
   }
 }
 
-async function runOmpOfficial(kind: 'install' | 'update' | 'uninstall') {
+async function runOmpOfficial(kind: 'install' | 'update' | 'repair' | 'uninstall') {
   if (ompBusy.value) return
   if (kind === 'uninstall') {
     const accepted = await confirm({
@@ -80,17 +80,23 @@ async function runOmpOfficial(kind: 'install' | 'update' | 'uninstall') {
   }
   ompBusy.value = true
   try {
-    const rpc = kind === 'install' ? EnvCheckAPI.InstallOmpOfficial : kind === 'update' ? EnvCheckAPI.UpdateOmpOfficial : EnvCheckAPI.UninstallOmpOfficial
+    const rpc = kind === 'install'
+      ? EnvCheckAPI.InstallOmpOfficial
+      : kind === 'update'
+        ? EnvCheckAPI.UpdateOmpOfficial
+        : kind === 'repair'
+          ? EnvCheckAPI.RepairOmpOfficial
+          : EnvCheckAPI.UninstallOmpOfficial
     const res = await (rpc() as Promise<unknown>)
     if (kind === 'uninstall') {
       showToast(typeof res === 'string' && res ? res : '已卸载')
       await loadOmpOfficial()
     } else {
       const ret = res as string
-      showToast(ret === 'in-progress' ? '已有一趟官方脚本在跑，请等它结束' : '已在后台进行，进度见卡片')
+      showToast(ret === 'in-progress' ? '已有一趟官方通道动作在跑，请等它结束' : '已在后台进行，进度见卡片')
     }
   } catch (e) {
-    showToast({ install: '安装失败', update: '更新失败', uninstall: '卸载失败' }[kind] + ': ' + String(e))
+    showToast({ install: '安装失败', update: '更新失败', repair: '修复/重装失败', uninstall: '卸载失败' }[kind] + ': ' + String(e))
   } finally {
     ompBusy.value = false
   }
@@ -106,7 +112,19 @@ async function openOmpDataDir() {
 
 useWailsEvent<{ op: string; stage: string; message: string }>('envcheck:omp-official-op', (p) => {
   ompOp.value = p
-  if (p.stage === 'done' || p.stage === 'error') loadOmpOfficial()
+  if (p.stage !== 'done' && p.stage !== 'error') return
+  loadOmpOfficial()
+  // 装/更/卸成功会同时改变两件事：官方装件现场（上面那条）与"本机×官网版本"对照关系。
+  // 只重探现场，版本对照卡会停在上一轮读数——"点了更新页面没反应"就出在这（2026-11-11
+  // 机主实报）。收敛口径与 npm 工具终态同形（handleNpmOperation：重取 overview + DetectAll）。
+  if (p.stage === 'done') {
+    void refreshOfficial('omp')
+    EnvCheckAPI.DetectAll()
+      .then((result) => {
+        tools.value = result ?? []
+      })
+      .catch(() => {})
+  }
 })
 const { copyWithToast } = useClipboard()
 
@@ -660,7 +678,7 @@ onMounted(() => {
         <div class="section-heading">
           <div>
             <h2>Oh My Pi 官方安装</h2>
-            <p>纯 TUI 编码代理 omp：一键代跑官方脚本装/更/卸（含 PATH 打理，瞬时网络失败自动重试）；装完新开终端直接敲 <code>omp</code>。追更对照见上方 Oh My Pi 卡片。</p>
+            <p>纯 TUI 编码代理 omp：首装代跑官方 install.ps1（含 PATH 打理与 Git Bash 接线），<strong>更新/修复走 omp 自带的 <code>omp update</code></strong>（增量补丁，秒级完成，跑完对新终端生效）；两条通道都含瞬时失败自动重试。装完新开终端直接敲 <code>omp</code>。追更对照见上方 Oh My Pi 卡片。</p>
           </div>
         </div>
         <div class="management-grid compact-grid">
@@ -679,8 +697,8 @@ onMounted(() => {
             </div>
             <div class="omp-op-actions">
               <button v-if="!ompOfficial?.officialPresent" class="btn btn-primary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('install')">⚡ 安装（官方脚本）</button>
-              <button v-else class="btn btn-secondary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('update')">↑ 更新到最新版</button>
-              <button class="link-button" :disabled="ompBusy || ompOp?.stage === 'running' || !ompOfficial?.officialPresent" title="重跑官方脚本原地修复（幂等）" @click="runOmpOfficial('update')">修复/重装</button>
+              <button v-else class="btn btn-secondary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" title="omp update 增量更新到最新版（在跑的会话仍是旧镜像，新终端生效）" @click="runOmpOfficial('update')">↑ 更新到最新版</button>
+              <button class="link-button" :disabled="ompBusy || ompOp?.stage === 'running' || !ompOfficial?.officialPresent" title="omp update --force 原地重装（幂等，已是最新版也重取）" @click="runOmpOfficial('repair')">修复/重装</button>
               <button v-if="ompOfficial?.officialPresent || ompOfficial?.onPath" class="btn btn-ghost btn-small text-danger" :disabled="ompBusy" @click="runOmpOfficial('uninstall')">卸载</button>
               <button class="link-button" :disabled="!ompOfficial?.dataDir" title="打开 ~/.omp（配置、凭据、会话与记忆库）" @click="openOmpDataDir()">打开数据根</button>
             </div>

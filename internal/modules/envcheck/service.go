@@ -432,7 +432,9 @@ func (s *EnvCheckService) InstallOmpOfficial() (string, error) {
 	return s.startOmpOfficial("install")
 }
 
-// UpdateOmpOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+// UpdateOmpOfficial 一键更新=走 omp 自带自更新通道 `omp update`（增量补丁、秒级完成，
+// 取舍实测见 ompofficial 包注释）；装件不在场时如实回退官方脚本首装。
+// 进度经事件 envcheck:omp-official-op 回流；已在跑则报 in-progress。
 func (s *EnvCheckService) UpdateOmpOfficial() (string, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -442,7 +444,18 @@ func (s *EnvCheckService) UpdateOmpOfficial() (string, error) {
 	return s.startOmpOfficial("update")
 }
 
-// startOmpOfficial install/update 共用编排（调用门由两个导出 RPC 各自持有，本私有件
+// RepairOmpOfficial 页内「修复/重装」=`omp update --force`——已是最新版也原地重装；
+// 装件不在场同样回退官方脚本。与 UpdateOmpOfficial 共用互斥槽位与事件流。
+func (s *EnvCheckService) RepairOmpOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.startOmpOfficial("repair")
+}
+
+// startOmpOfficial install/update/repair 共用编排（调用门由各导出 RPC 各自持有，本私有件
 // 承接已放行路径；互斥 ompOfficialBusy 槽位）。
 func (s *EnvCheckService) startOmpOfficial(op string) (string, error) {
 	s.ompOfficialMu.Lock()
@@ -464,23 +477,30 @@ func (s *EnvCheckService) startOmpOfficial(op string) (string, error) {
 				app.Event.Emit("envcheck:omp-official-op", ompofficial.OpProgress{Op: op, Stage: stage, Message: msg})
 			}
 		}
-		emit("running", "正在执行官方安装脚本（下载校验全程由脚本自理）…")
+		running := "正在执行官方安装脚本（下载校验全程由脚本自理）…"
+		if op != "install" {
+			running = "正在用 omp 自带更新通道取最新版（增量补丁，跑完对新终端生效）…"
+		}
+		emit("running", running)
 		lease, leaseErr := s.holder.EnterBackground(context.Background())
 		if leaseErr != nil {
 			emit("error", leaseErr.Error())
 			return
 		}
 		defer lease.Release()
-		out, err := s.ompOfficial.RunScript(lease.Context())
+		var out string
+		var err error
+		if op == "install" {
+			out, err = s.ompOfficial.RunScript(lease.Context())
+		} else {
+			out, err = s.ompOfficial.UpdateLatest(lease.Context(), op == "repair")
+		}
 		if err != nil {
-			emit("error", fmt.Sprintf("%s: %v", firstLineFallback(out, "脚本无输出"), err))
-			notify.Error("envcheck", "omp 官方脚本失败", err.Error(), "/ext/envcheck")
+			emit("error", fmt.Sprintf("%s: %v", firstLineFallback(out, "无输出"), err))
+			notify.Error("envcheck", "omp 官方通道失败", err.Error(), "/ext/envcheck")
 			return
 		}
-		verb := "安装"
-		if op == "update" {
-			verb = "更新"
-		}
+		verb := map[string]string{"install": "安装", "update": "更新", "repair": "修复重装"}[op]
 		emit("done", fmt.Sprintf("omp 已%s：%s", verb, s.ompOfficial.Probe().OfficialVersion))
 		notify.Success("envcheck", "omp 官方"+verb+"完成", "新开终端敲 omp 即可使用（凭据与数据在 ~/.omp 未动）", "/ext/envcheck")
 	}()

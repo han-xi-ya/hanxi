@@ -32,6 +32,13 @@ const env = vi.hoisted(() => ({
   OpenPythonDownloadPage: vi.fn(),
   OpenDotNetDownloadPage: vi.fn(),
   OpenOmpDownloadPage: vi.fn(),
+  // omp 官方安装通道（2026-11-04 并入 envcheck，2026-11-11 更新切 omp 自带通道并加修复重装）：
+  // 不补这几件，loadOmpOfficial 会走 try/catch 静默失败，官方卡永远停在探测失败形态。
+  GetOmpOfficialStatus: vi.fn(),
+  InstallOmpOfficial: vi.fn(),
+  UpdateOmpOfficial: vi.fn(),
+  RepairOmpOfficial: vi.fn(),
+  UninstallOmpOfficial: vi.fn(),
 }))
 
 const bcu = vi.hoisted(() => ({ OpenWindow: vi.fn() }))
@@ -112,6 +119,13 @@ function stubHappy() {
     fn.mockResolvedValue({ channels: [{ key: 'stable', label: 'Stable', detail: '', relation: 'update-available', releases: [{ version: '1.2.3', published: '2026-08-01T00:00:00Z' }], relationDetail: '' }], isStale: false, fetchedAt: '2026-09-05 10:00' } as never)
   }
   env.RevealToolPath.mockResolvedValue(undefined)
+  env.GetOmpOfficialStatus.mockResolvedValue({
+    officialDir: 'C:\\Users\\u\\AppData\\Local\\omp',
+    officialPresent: true,
+    officialVersion: 'omp/18.16.0',
+    onPath: true,
+    dataDir: 'C:\\Users\\u\\.omp',
+  } as never)
   env.InstallNpmTool.mockResolvedValue({ operationId: 'op-1', message: '已受理' })
   env.UpgradeNpmTool.mockResolvedValue({ operationId: 'op-2', message: '升级中' })
   env.UninstallNpmTool.mockResolvedValue({ operationId: 'op-3', message: '卸载中' })
@@ -178,7 +192,7 @@ describe('EnvCheckView 检测卡渲染', () => {
   it('Oh My Pi 走官方 GitHub Releases 对照通道，非受管 npm 区', async () => {
     stubHappy()
     env.GetOmpOverview.mockResolvedValue({
-      channels: [{ key: 'stable', label: 'Stable', detail: '更新指路：官方脚本装用 omp update', relation: 'update-available', releases: [{ version: '18.17.0', published: '2026-11-04' }], relationDetail: '' }],
+      channels: [{ key: 'stable', label: 'Stable', detail: '更新指路：官方脚本装用 omp update（页内「更新到最新版」即此通道）；npm/bun 装用各自包管理器更新', relation: 'update-available', releases: [{ version: '18.17.0', published: '2026-11-04' }], relationDetail: '' }],
       isStale: false, fetchedAt: '2026-11-04 13:00',
     } as never)
     const w = await mountView()
@@ -187,11 +201,58 @@ describe('EnvCheckView 检测卡渲染', () => {
     const card = w.findAll('.management-card').find(c => c.text().includes('Oh My Pi 官方稳定版'))!
     expect(card.text()).toContain('18.17.0')
     expect(card.text()).toContain('该通道有可用更新')
-    expect(card.text()).toContain('更新指路：官方脚本装用 omp update')
+    expect(card.text()).toContain('更新指路：官方脚本装用 omp update（页内「更新到最新版」即此通道）')
     expect(env.OpenOmpDownloadPage).not.toHaveBeenCalled()
     const openBtn = card.findAll('button').find(b => b.text().includes('打开 Oh My Pi 官网'))!
     await openBtn.trigger('click')
     expect(env.OpenOmpDownloadPage).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('omp 官方卡按钮路由：更新走 omp 自带通道，修复/重装走 --force 那条 RPC', async () => {
+    stubHappy()
+    env.UpdateOmpOfficial.mockResolvedValue('started')
+    env.RepairOmpOfficial.mockResolvedValue('started')
+    const w = await mountView()
+    await flush()
+    await openVersions(w)
+    const card = w.findAll('.management-card').find(c => c.text().includes('Oh My Pi (omp)'))!
+    await card.findAll('button').find(b => b.text().includes('更新到最新版'))!.trigger('click')
+    await flush()
+    expect(env.UpdateOmpOfficial).toHaveBeenCalledTimes(1)
+    expect(env.RepairOmpOfficial).not.toHaveBeenCalled()
+    await card.findAll('button').find(b => b.text().includes('修复/重装'))!.trigger('click')
+    await flush()
+    expect(env.RepairOmpOfficial).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('omp 官方通道事件流：非终态只挂进度、error 仅重探现场、done 三处收敛（现场+对照卡+本机清单）', async () => {
+    stubHappy()
+    const w = await mountView()
+    await flush()
+    await openVersions(w)
+    const statusBefore = env.GetOmpOfficialStatus.mock.calls.length
+    const overviewBefore = env.GetOmpOverview.mock.calls.length
+    const detectBefore = env.DetectAll.mock.calls.length
+
+    runtime.handlers['envcheck:omp-official-op']({ data: { op: 'update', stage: 'running', message: '正在用 omp 自带更新通道取最新版…' } })
+    await flush()
+    expect(w.text()).toContain('正在用 omp 自带更新通道取最新版')
+    expect(env.GetOmpOfficialStatus.mock.calls.length).toBe(statusBefore)
+
+    // 失败不改机器态：重探现场即可，对照卡与本机清单不许无端重取
+    runtime.handlers['envcheck:omp-official-op']({ data: { op: 'update', stage: 'error', message: '连试 3 次仍失败' } })
+    await flush()
+    expect(env.GetOmpOfficialStatus.mock.calls.length).toBeGreaterThan(statusBefore)
+    expect(env.GetOmpOverview.mock.calls.length).toBe(overviewBefore)
+    expect(env.DetectAll.mock.calls.length).toBe(detectBefore)
+
+    // 成功改变了本机版本与其和官网的关系：三处一起收敛，卡片才会从"有可用更新"翻正
+    runtime.handlers['envcheck:omp-official-op']({ data: { op: 'update', stage: 'done', message: 'omp 已更新：omp/18.18.8' } })
+    await flush()
+    expect(env.GetOmpOverview.mock.calls.length).toBeGreaterThan(overviewBefore)
+    expect(env.DetectAll.mock.calls.length).toBeGreaterThan(detectBefore)
     w.unmount()
   })
 

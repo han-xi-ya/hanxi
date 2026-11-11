@@ -153,6 +153,29 @@ func tailOutput(s string, n int) string {
 	return "…" + s[len(s)-n:]
 }
 
+// runSelfUpdateImpl 执行 omp 自带更新通道：`<exe> update [--force]`。
+// 无窗创建（防机主桌面扫黑框），超时沿用脚本档预算（--force 原地重装会下整包）。
+// 通道取舍理由见 official.go 包注释（增量补丁 35.7MB/6s vs 脚本整包 244MB/189s）。
+func runSelfUpdateImpl(ctx context.Context, exe string, force bool) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, officialRunTimeout)
+	defer cancel()
+	args := []string{"update"}
+	if force {
+		args = append(args, "--force")
+	}
+	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.CombinedOutput()
+	text := tailOutput(string(out), 600)
+	if ctx.Err() == context.DeadlineExceeded {
+		return text, fmt.Errorf("omp update 超时（%v），输出尾段：%s", officialRunTimeout, text)
+	}
+	if err != nil {
+		return text, fmt.Errorf("omp update 执行失败: %w，输出尾段：%s", err, text)
+	}
+	return text, nil
+}
+
 // New 组装真实 Windows 官方安装通道编排器。
 func New() *Manager {
 	return &Manager{
@@ -161,6 +184,7 @@ func New() *Manager {
 		writePath: writeUserPathRaw,
 		broadcast: broadcastEnvChange,
 		runScript: runOfficialScriptImpl,
+		runUpdate: runSelfUpdateImpl,
 		probeVer:  probeVersionImpl,
 	}
 }

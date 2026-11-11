@@ -254,6 +254,15 @@ export function OpenPythonDownloadPage() {
 }
 
 /**
+ * RepairOmpOfficial 页内「修复/重装」=`omp update --force`——已是最新版也原地重装；
+ * 装件不在场同样回退官方脚本。与 UpdateOmpOfficial 共用互斥槽位与事件流。
+ * @returns {$CancellablePromise<string>}
+ */
+export function RepairOmpOfficial() {
+    return $Call.ByID(1406412539);
+}
+
+/**
  * RevealToolPath 在资源管理器中定位该工具探测到的可执行文件。
  * 前端只允许传注册名，路径由后端探测器基于实机 PATH 解析重新获得，
  * 不接受前端传入任意路径字符串，避免本模块被用作任意本地路径探测面。
@@ -282,7 +291,9 @@ export function UninstallOmpOfficial() {
 }
 
 /**
- * UpdateOmpOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+ * UpdateOmpOfficial 一键更新=走 omp 自带自更新通道 `omp update`（增量补丁、秒级完成，
+ * 取舍实测见 ompofficial 包注释）；装件不在场时如实回退官方脚本首装。
+ * 进度经事件 envcheck:omp-official-op 回流；已在跑则报 in-progress。
  * @returns {$CancellablePromise<string>}
  */
 export function UpdateOmpOfficial() {

@@ -107,7 +107,7 @@ func normalize(src []githubRelease) []remoteversion.Channel {
 	return []remoteversion.Channel{{
 		Key:      "stable",
 		Label:    "Stable",
-		Detail:   "更新指路：官方脚本装用 omp update；npm/bun 装用各自包管理器更新",
+		Detail:   "更新指路：官方脚本装用 omp update（页内「更新到最新版」即此通道）；npm/bun 装用各自包管理器更新",
 		Releases: releases,
 	}}
 }
