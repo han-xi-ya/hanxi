@@ -253,7 +253,30 @@ src/
 - **家族收编**：托管家族控制台皮 ~40 条原子（控制条/状态字组/下载行/已装卡/联动卡/知识折叠卡/table-container/ver-name/empty-hint/banner.slim/rtt-tag/btn-accent-outline/语义文本三色）上收 components.css「托管家族控制台皮」块，**~895 条 scoped 副本删净落回**；散差按多数派定档（installed-grid minmax320、control-bar gap8、dl-bar-inner base ease、retry-link ml8、hint-line 无行距、**info-body gap 4px——模板视图 MarkerOn 值系少数派，定档时已纠正**）。净账 92 受管文件 +1434/−4282，含 wsl 新族共净 −644 行。
 - **确定性缺陷修复**：`box-shadow: 0 Xpx Ypx var(--shadow-*)` 拼接无效七处改正（TROUBLESHOOTING #51，修复后投影开始真实渲染=目视项）；FileShare 三页签死祖先选择器删除；死类 `py-8/.first-use` 等清绝。
 - **真机目视项清单**（全为 token 定档/落回的设计归一，±1–2px 与个别形制）：① VSCode/FrpcVersionsTab/Douzy `.mono` 11→12px；② FrpcProjects 大空态图标 40→28px；③ MangoDisk/Snipaste 页头 21/20→18px；④ SnipCard 外 9 视图 `.ver-pill` 4px→胶囊、`.empty-hint` 6→8px、control-bar 圆角 10→12px；⑤ Wifi/Lan/PortKill/IpOverview/FileShare×3 `.empty-hint` 裸文字→虚线卡标准形；⑥ Memo 页头/模态钮 36px 高中枢（原 8px 内距无形钮）、页标题 22→18px；⑦ PackageManagerUpgradeHint `.copy-button` 收 btn-micro 28→24px；⑧ 阴影修复七处投影开始渲染；⑨ WSL 表壳获得 table-container 边框壳（裸用新染，预期收编）；⑩ FileShareInbox/Endpoints `.empty-state` gen1 基形落回全局。
-- **下轮候选（登记未做）**：① `components/tool/ManagedConsoleShell/VersionGrid/StatusHeader`（§4 预留位）——前缀状态灯 `{pfx}-status-light`、`{pfx}-ver-status` 四态灯、dz-/md- 前缀家族、badge 色词→chip 映射、`.summary-text` 更名合流；② `.control-panel` gap/wrap、`.k` 36 vs 44、`ver-pill` 方片形制、retry-link `<a>` 无 href 不可键盘聚焦（可访问性）→ 收编波；③ UiModal 抽象收双模态壳+Frpc 手搓 modal（§9.6-8）；④ OcrView `--primary-soft` 未定义回退、FrpcProjectEditor 无效阴影已修但 hover 意图待裁决、Memo 死 utility（font-mono/mb-*/truncate）复活或删除；⑤ ~~AppIcon 阶段2/3（挂起中）~~（2026-10-21 对账：已随 N27 全部落地，见 §8 与顶部快照，销账）。
+- **下轮候选（登记未做）**：① `components/tool/ManagedConsoleShell/VersionGrid/StatusHeader`（§4 预留位）——前缀状态灯 `{pfx}-status-light`、`{pfx}-ver-status` 四态灯、dz-/md- 前缀家族、badge 色词→chip 映射、`.summary-text` 更名合流；② `.control-panel` gap/wrap、`.k` 36 vs 44、~~`ver-pill` 方片形制~~（2026-11-12 精致化批已裁：BCU/RustDesk/SubnetDesk 方片方言删净落回胶囊标准形，见 §9.8-精致化批）、~~retry-link `<a>` 无 href 不可键盘聚焦（可访问性）~~（2026-11-12 已收编，见 §9.8 与 TROUBLESHOOTING #155）→ 收编波；③ UiModal 抽象收双模态壳+Frpc 手搓 modal（§9.6-8）；④ ~~OcrView `--primary-soft` 未定义回退~~（2026-11-12 已改 --color-primary-soft，见 §9.8）、FrpcProjectEditor 无效阴影已修但 hover 意图待裁决、Memo 死 utility（font-mono/mb-*/truncate）复活或删除；⑤ ~~AppIcon 阶段2/3（挂起中）~~（2026-10-21 对账：已随 N27 全部落地，见 §8 与顶部快照，销账）。
+
+### 9.8 细节粗糙度治理波（2026-11-12，八路并行审计 + 主会话共享层收口）
+
+- **动因**：机主报"前端有些地方细节不是很到位，有点粗糙"。八路只读审计（shell/token、首页/模块、网络、托管、小工具、效率、编辑/终端、设置/FileShare）按 hanxi-workbench-ui 三份 references 逐文件取证，产出 ~140 条证据化 findings（文件:行号），主会话分诊后划文件所有权并行修复。
+- **共享层收口（主会话，已真机验证）**：
+  - **输入框深色 UA 暖灰**：`.text-input`/`.form-text-input` 补显式 `background:var(--surface-panel); color:var(--color-text)`（深色实测从 UA `#3b3b3b` 修到 `#0e1c22`，TROUBLESHOOTING #152）；四输入原子描边 `--color-border`（白底 1.27:1 近隐形）提深到 `--color-border-strong`，两对话框钮删局部弱边落回全局 `--btn-*-edge`。
+  - **全局滚动条皮肤**：tokens.css 新增 `--scrollbar-thumb/-hover` 派生档（浅取边框档、深向 white 提亮镜像），base.css 全局 `* { scrollbar-width:thin; scrollbar-color }` + `::-webkit-scrollbar` 圆角滑块（10px 同经典占位，不破坏 .content-area scrollbar-gutter 防横抖）；视图局部 none/thin 方言特异性更高自然压过。
+  - **层序回归**：窄屏 flyout 透明收回遮罩裸 z:1000 反盖面板（--z-flyout:900）致点不动——新增 `--z-flyout-under:899`/`--z-rail-drawer:1000`/`--z-rail-under:999` 入册，AppSidebar 四处裸 z 换 var()（真机 elementFromPoint 验证面板可点，TROUBLESHOOTING #153）；通知抽屉降入对话框下档 `--z-drawer:940`/`--z-drawer-panel:945`（原 10001/10002 反盖 App 单例 confirm 致清空确认不可点），snackbar 9999 浮于抽屉之上使错误回执可见。
+  - **命令面板**：数字快捷启动补 `!query.trim()` 守卫（输入 win10/ipv4 不再被首个数字劫持跳转，补回归用例，TROUBLESHOOTING #154）；Tab 困窗 + 删 `.p-input input` outline:none 落回 --focus-ring。
+  - **retry-link 键盘可达**：全局原子补按钮重置，managed/vscode/BCU/RustDesk/SubnetDesk 五处裸 `<a>` 改 `<button type=button>`（TROUBLESHOOTING #155）；同族下载进度条补 role=progressbar+aria-*。
+  - **可点原子禁用口径**：`.link-button`/`.retry-link`/`.state-action`/`.btn-quick` 补 :disabled（grayscale+opacity，对齐 .btn 家族），hover 补 :not(:disabled)。
+  - **ui 原语**：UiProgressBar 补 label（aria-label）+ indeterminate 模式（不假报百分比）；UiButton 补 busy prop（disabled+aria-busy+保宽 spinner）；UiClipboardField 📋→AppIcon clipboard + 禁用态换底；ConfirmDialog busy 锁 min-width 防横跳 + aria-busy；cmodal-close 补 28px 命中区+hover；custom-modal-card 圆角 10px→--radius-element。
+  - **错误回执契约**：App.vue 模块初始化失败/main.ts 运行时异常改 showErrorToast（8s），global-toast 补 role=status + 裸色入册 `--surface-toast`/`--color-on-toast`。
+  - **托管孪生**：RustDesk/SubnetDesk download/install 补 resolve 占位票防双击窗口（对齐 FrpcVersionsTab 先例）；FrpcVersionsTab 表 overflow-x:auto + 空态 !loading 守卫 + 远程空态按 errorMsg 分诊。
+- **并行修复切片（八代理，文件所有权互斥）**：网络（PortScan 终止终态/FrpcProjectEditor 焦点环与 secretKey 校验/Wifi 哨兵密码二维码/LanScanner 备注键盘可达/publicip 陈旧标记）、通知族（抽屉 useDialogA11y/浮卡 aria-live+真 button/清空确认/ElevateRestart busy）、设置/FileShare（SettingsModal 焦点环/FileShare 错误横幅与 QR 失败态/破坏性确认/Storage 错误态）、首页/模块（Douzy 收编/HomeView KPI 门禁/占位页）、小工具（PortKill 查询错位/SnipCard 失败态/MangoDisk switch 对比/SysInfo 溢出）、效率（MemoView pane-read 断链/KeepAlive Esc/emoji 图标/ClipboardOverlay 键盘快操作）、编辑/终端（LogsView 清理确认/wechatbot 组字豁免与键盘可达/sshkeys 确认待决闸）、托管（ManagedExtrasCard busy 脱钩/Everything·VSCode stale 降灰/版本表 min-width 地板）。
+- **纪律**：共享层（styles/、ui/、shell/、ConfirmDialog、tokens 层序册）归主会话串行收口；视图切片归各代理；改词面/结构前先查 spec 断言，断言保留；全局滚动条皮肤落地后逐容器 scrollbar 规则不再补。踩坑沉淀 TROUBLESHOOTING #152–#155。
+- **精致化批（同日追加，机主裁决「按推荐改进，主要看着舒服精致美观」）**：
+  - **半径全量收编**：零观感批 35 处（4/6/8/12/999px 等值换 var()，两路 sonic 并行）+ 档外值批 24 处就近取档（3px 徽标→micro、5px 控件→chip、10px 小 chip→pill、focus 环内圆角 2/3px→micro；±1–2px 目视项）；Everything dl-bar 3px→pill（design-system progress 用 pill，motion-fast linear 保留）。收编后视图/组件层 `border-radius: Npx` 裸值 **0 命中**（50% 圆形惯例除外）。
+  - **ver-pill 方片方言裁决**：BCU/RustDesk/SubnetDesk 三处 scoped 方片覆写删净，落回全局 `.ver-pill` 胶囊标准形——同族切换页签版本胶囊同形（§9.7-②销账）；control-bar 的 radius-control 密度补差保留。
+  - **死资产清理**：public/bg-desktop.jpg(187K)/bg-mobile.jpg(178K)/vue.svg 全库无引用删除，index.html 死节点 `<div class="bg">` 清除——分发体积 −365KB。
+  - **主字族 preload**：index.html 补 `<link rel="preload" as="font" crossorigin>` 指向 LXGW 文楷 woff2（6.1MB 首帧最大资产），字体 fetch 与 JS 并行起跑缩短 FOUT 换装窗口；build 后 href 正确重写为带 hash 产物路径，真机 document.fonts.check 通过。
+  - **lint 账面清零**：FileShareSettings no-mutating-props（§9.6-3 在册决策）/TerminalView.spec no-this-alias（xterm 桩闭包捕获）/MarkerOn valid-v-for（单元素数组模板别名惯用法）三处定向 eslint-disable 带缘由注释，0 error 0 warning。
+  - **触屏可发现性补漏**：EnvCheck 行内复制钮补 pointer:coarse 恒显（OcrView P2-14 同款漏网面）。
 
 ## 10. 提交拆分（示例）
 

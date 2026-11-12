@@ -171,6 +171,10 @@
 - [140. x/sys ProcThreadAttributeListContainer.Update 的签名逼出 uintptr 转 unsafe.Pointer，触发 go vet unsafeptr：句柄本是整数，直走原生 proc.Call 传 uintptr 才是诚实写法](#140-xsys-procthreadattributelistcontainerupdate-的签名逼出-uintptr-转-unsafepointer触发-go-vet-unsafeptr句柄本是整数直走原生-proccall-传-uintptr-才是诚实写法)
 - [141. proc.Call 少传一个参数：脏寄存器平时侥幸、偶发以无意义 errcode 翻车——syscall 的实参个数没有编译器兜底，逐个数是纪律](#141-proccall-少传一个参数脏寄存器平时侥幸偶发以无意义-errcode-翻车syscall-的实参个数没有编译器兜底逐个数是纪律)
 - [142. 停用/退出的收口代码过自家调用门，被门在 stopping 态拒绝而**完全空转**；GoStream 数据面又是 rpc_gate_matrix 的盲区——不在 RPC 面上的入口与收口，门的语义要单独设计](#142-停用退出的收口代码过自家调用门被门在-stopping-态拒绝而完全空转gostream-数据面又是-rpc_gate_matrix-的盲区不在-rpc-面上的入口与收口门的语义要单独设计)
+- [152. 前端：输入框原子不声明 background，深色模式落 UA 暖灰 #3b3b3b——color-scheme 只改 UA 控件配色，不改你"没写"的背景](#152-前端输入框原子不声明-background深色模式落-ua-暖灰-3b3b3bcolor-scheme-只改-ua-控件配色不改你没写的背景)
+- [153. 前端：窄屏 flyout 的透明收回遮罩 z-index 高于面板，点任何模块项都只触发收回——C2 降面板层序时遮罩没跟着降](#153-前端窄屏-flyout-的透明收回遮罩-z-index-高于面板点任何模块项都只触发收回c2-降面板层序时遮罩没跟着降)
+- [154. 前端：命令面板数字快捷启动无查询守卫，输入 "win10"/"ipv4" 的第一个数字就跳转关面板](#154-前端命令面板数字快捷启动无查询守卫输入-win10ipv4-的第一个数字就跳转关面板)
+- [155. 前端：无 href 的 `<a class="retry-link">` 键盘永远聚焦不到——下载失败后唯一恢复动作对键盘用户不可达](#155-前端无-href-的-a-classretry-link-键盘永远聚焦不到下载失败后唯一恢复动作对键盘用户不可达)
 
 ---
 
@@ -1999,3 +2003,41 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
   3. **用户数据不许躺在版本目录里**：托管家族的删除/回滚/清残留动作全都作用于版本目录，数据放进去就等于挂在"删版本"的刀下。要隔离就得同时回答"删版本时数据怎么办"。
   4. 判"没数据"先分清三层：**读取失败 / 读到了另一份 / 本来就是空环境**——字节数与表行数控对比（`tb_data` 63 vs 0）一次就定性，别从 UI 猜。
   5. 共享模式下**别同时开两份**（同一 SQLite 文件）；回执与页面文案要写明"下次启动生效"和被停用副本的位置，给用户一条看得见的回退路。
+
+### 152. 前端：输入框原子不声明 background，深色模式落 UA 暖灰 #3b3b3b——color-scheme 只改 UA 控件配色，不改你"没写"的背景
+
+- **问题现象与错误原因**：机主报"前端有些地方细节粗糙"。真机（headless Chromium 加载 Vite dev）实测：`.text-input`/`.form-text-input` 只写了 border/padding/font-size，**没写 background**。浅色下 UA 默认白底恰好与 `--surface-panel` 同值，看不出问题；一切到深色（`data-theme="dark"` + `color-scheme:dark`），UA 把无背景声明的 input 填成暖灰 `rgb(59,59,59)`，而四周面板是冷色 `#0e1c22`——输入框像一块块暖灰补丁嵌在冷色界面里。`.select-input`/`.input-number` 因为显式写了 `background:var(--surface-panel)` 反而正常，同族控件两种观感。
+- **排查过程**：先在浏览器里 `getComputedStyle(input).backgroundColor` 取证（深色下 `rgb(59,59,59)`），再对照同族 `.select-input`（`rgb(14,28,34)`）确认差异来自"有没有显式背景"。一度误判为 `color-scheme` 没生效——实际 `useTheme` 同时写 `dataset.theme` 与 `el.style.colorScheme`，只改 dataset 不改 inline colorScheme 的探针会得出错误结论；两处同改后复测才定性。
+- **正确做法与标准修复方案**：输入类原子（`.text-input`/`.form-text-input`）显式补 `background:var(--surface-panel); color:var(--color-text)`，与 `.select-input`/`.input-number` 同口径。修复后深色实测 `rgb(14,28,34)`，与面板融为一体。
+- **避坑防重犯建议**：
+  1. **`color-scheme` 不是主题系统的兜底**：它只决定 UA 原生控件（input/select/滚动条/表单校验气泡）的默认配色，不会把你"漏写"的背景改成你的语义色。任何自定义控件要随主题，必须显式 `var()` 引用表面 token，不能指望 UA 默认值恰好等于你的设计值。
+  2. **浅色下"看起来对"不等于对**：UA 白底 == 浅色面板白底是巧合，深色立刻露馅。新增控件原子时浅色/深色两套都要真机看一眼，别只验浅色。
+  3. 探针要同时改 `data-theme` 与 inline `colorScheme`（`useTheme` 的真实写法），只改其一得出的对比是假象。
+
+### 153. 前端：窄屏 flyout 的透明收回遮罩 z-index 高于面板，点任何模块项都只触发收回——C2 降面板层序时遮罩没跟着降
+
+- **问题现象与错误原因**：≤1100px 窄屏下侧栏二级 flyout 完全点不动。`.sidebar.panel-flyout .nav-panel` 在样式审计 C2（2026-10-27）从 1001 降入 `--z-flyout:900`（让位 App 单例对话框 1000），但全屏透明收回层 `.flyout-mask` 仍裸写 `z-index:1000`——遮罩盖在面板之上，`elementFromPoint` 命中遮罩，点任何模块项都只触发 `panelFlyout=false` 收回，无法导航。
+- **排查过程**：真机把视口缩到 1000px 打开分组 flyout，`getComputedStyle` 取面板与遮罩 z-index，再用 `document.elementFromPoint(面板中心)` 验证命中谁。第一次探针选错元素（`.panel-flyout` 是侧栏容器不是面板本体，面板是 `.sidebar.panel-flyout .nav-panel`），命中遮罩误以为没修好；改对选择器后复测：面板 z=900、遮罩 z=899、命中 `panel-title`（面板内），确认修复。
+- **正确做法与标准修复方案**：tokens.css 层序册新增 `--z-flyout-under:899`（收回遮罩，必须低于面板）、`--z-rail-drawer:1000`/`--z-rail-under:999`（≤760px rail 抽屉本体/遮罩把手），AppSidebar 四处裸 z 全部换 var()。遮罩永远低于它要收回的面板。
+- **避坑防重犯建议**：
+  1. **降一个浮层的层序时，连带检查它的遮罩/收回层**：遮罩与面板是一对，面板降了遮罩不降就会反盖。层序调整要成对核对，不能只改面板。
+  2. **裸 z 值一律入层序册**：`--z-*` 登记册存在的意义就是让"谁压谁"可审计；视图/组件自造顶值（1000/999）即违规，改 var() 后这类回归在 grep 层序册时就能发现。
+  3. 验"点不动"先 `elementFromPoint` 看命中谁，别只看 z-index 数字——选择器选错元素会得出相反结论。
+
+### 154. 前端：命令面板数字快捷启动无查询守卫，输入 "win10"/"ipv4" 的第一个数字就跳转关面板
+
+- **问题现象与错误原因**：Ctrl+K 命令面板的 window keydown 监听里，`/^[1-9]$/.test(e.key)` 分支无条件 `activate(Number(e.key)-1)` 并关面板。用户在搜索框输入含数字的查询（"win10"、"ipv4"、"port80"）时，敲下第一个数字就被当成"直达第 N 项"快捷键，面板直接跳转关闭，查询根本打不完。
+- **排查过程**：读 keydown 分支确认数字分支无 `query` 守卫；现有特征测试只锁了"空查询按 1–9 直达"和"composing 期间不劫持"，没覆盖"查询非空时数字应放行"这条路径。
+- **正确做法与标准修复方案**：数字分支补 `&& !query.value.trim()` 守卫——数字快捷启动仅在浏览态（查询为空）生效，输入态放行字符。补一条回归用例：查询 "win10" 时按 1 不 emit navigate、面板保持打开、输入框值不变。另补 Tab 困窗（面板内唯一可聚焦元素是搜索框，Tab 恒回搜索框不逸出背后页面）与删除 `.p-input input` 的 `outline:none`（焦点环走全局 `--focus-ring`）。
+- **避坑防重犯建议**：
+  1. **全局快捷键与文本输入共用一个 keydown 监听时，每个会"吞字符"的分支都要问一句"输入态该不该生效"**：数字/字母快捷启动在搜索框聚焦且有内容时必须放行，否则用户打不出含这些字符的查询。
+  2. 快捷键契约的特征测试要覆盖"输入态放行"这条负路径，不能只测"空态触发"的正路径。
+
+### 155. 前端：无 href 的 `<a class="retry-link">` 键盘永远聚焦不到——下载失败后唯一恢复动作对键盘用户不可达
+
+- **问题现象与错误原因**：托管家族多个版本表的下载失败「重试」写成 `<a class="retry-link" @click="...">重试</a>`，无 href。无 href 的 `<a>` 不在 Tab 序里、Enter 不触发 click、读屏不识别为可操作项——失败后唯一的恢复动作对键盘用户完全不可达。同族 EverythingReleaseTable 早已改 `<button>` 并留注"重试是 <button> 而非无 href 的 <a>：键盘可达"，共享面板 ManagedVersionPanel、VSCodeReleaseTable、BCU/RustDesk/SubnetDesk 未跟进。
+- **排查过程**：grep `retry-link` 全库消费面，区分已是 `<button>` 的（envcheck/everything）与仍是裸 `<a>` 的（managed/vscode/BCU/RustDesk/SubnetDesk）；FRONTEND.md §9.7 下轮候选已登记此项（"retry-link `<a>` 无 href 不可键盘聚焦"）。
+- **正确做法与标准修复方案**：全局 `.retry-link` 原子补按钮重置（`appearance:none; background:none; border:none; padding:0; font:inherit`），消费面裸 `<a>` 一律改 `<button type="button" class="retry-link">`，外观维持链接形。禁用态用真 `disabled` 替代 `aria-disabled`+click 守卫。同族下载进度条补 `role="progressbar"`+`aria-valuenow/min/max`+`aria-label`（部分壳视图的 `.dl-bar-wrap` 此前无 ARIA）。
+- **避坑防重犯建议**：
+  1. **可点元素一律真 `<button>`（或真 href 的 `<a>`）**：无 href 的 `<a>`、`<div @click>`、`<span @click>` 都不在 Tab 序里，键盘与读屏用户摸不到。要链接外观就用 button + 链接形 CSS，不要拿裸 `<a>` 当按钮。
+  2. **共享层修好的契约要扫一遍方言消费面**：本例 button 重试、进度条 ARIA、stale 降灰、installed-tag 静态标签都是共享层已修、custom 方言视图系统性漏跟。修一处共享契约后 grep 全库消费面跟进，别只改共享件本身。
