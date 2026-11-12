@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue'
 import * as NotifyAPI from '../../bindings/hanxi/internal/notify'
 import type { Notification } from '../../bindings/hanxi/internal/notify/models'
+import { useToast } from './useToast'
+import { getErrorMessage } from '../utils/errors'
 
 export interface ToastItem {
   id: string
@@ -17,17 +19,23 @@ export interface ToastItem {
 const activeToasts = ref<ToastItem[]>([])
 const notifications = ref<Notification[]>([])
 const drawerVisible = ref(false)
+// 历史加载失败的可重试错误态（抽屉内错误条 + 重试按钮消费）；成功加载即清空。
+const historyError = ref('')
 
 const unreadCount = computed(() => {
   return notifications.value.filter((n) => !n.read).length
 })
 
 export function useNotification() {
+  const { showErrorToast } = useToast()
   async function loadHistory() {
     try {
       const list = await NotifyAPI.NotificationService.GetHistory()
       notifications.value = (list ?? []).filter(Boolean) as Notification[]
+      historyError.value = ''
     } catch (e) {
+      historyError.value = getErrorMessage(e)
+      showErrorToast(`通知历史加载失败: ${historyError.value}`)
       console.error('Failed to load notification history:', e)
     }
   }
@@ -114,6 +122,7 @@ export function useNotification() {
       await NotifyAPI.NotificationService.MarkAllAsRead()
       notifications.value.forEach((n) => (n.read = true))
     } catch (e) {
+      showErrorToast(`全部标记已读失败: ${getErrorMessage(e)}`)
       console.error('Failed to mark all notifications as read:', e)
     }
   }
@@ -123,6 +132,7 @@ export function useNotification() {
       await NotifyAPI.NotificationService.ClearHistory()
       notifications.value = []
     } catch (e) {
+      showErrorToast(`清空通知失败: ${getErrorMessage(e)}`)
       console.error('Failed to clear notification history:', e)
     }
   }
@@ -140,6 +150,7 @@ export function useNotification() {
     notifications,
     unreadCount,
     drawerVisible,
+    historyError,
     loadHistory,
     pushToast,
     removeToast,

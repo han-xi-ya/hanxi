@@ -1,5 +1,13 @@
 <script setup lang="ts">
+// 通知中心抽屉：遮罩模态，键盘契约走 useDialogA11y 单源——Esc/Tab 环困窗/回焦。
+// CSS 用抽屉专属档 --z-drawer(940)/--z-drawer-panel(945)，低于 App 单例 confirm/prompt(1000)，
+// 使「清空」确认框与错误回执浮于抽屉之上；z 参数取 underTop 仅作 Esc 让位语义判别（不写 CSS），
+// escapeYield 在确认/输入框在场时让位——一次 Esc 只关最上层。
+import { ref } from 'vue'
 import { useNotification } from '../composables/useNotification'
+import { DIALOG_Z, useDialogA11y } from '../composables/useDialogA11y'
+import { useConfirm } from '../composables/useConfirm'
+import { usePrompt } from '../composables/usePrompt'
 import type { Notification } from '../../bindings/hanxi/internal/notify/models'
 import { levelTone } from '../constants/status'
 import AppIcon from './ui/AppIcon.vue'
@@ -12,11 +20,28 @@ const {
   notifications,
   unreadCount,
   drawerVisible,
+  historyError,
+  loadHistory,
   closeDrawer,
   markAsRead,
   markAllAsRead,
   clearHistory,
 } = useNotification()
+const { confirm, confirmState } = useConfirm()
+const { promptState } = usePrompt()
+
+const drawerEl = ref<HTMLElement | null>(null)
+
+// 焦点入窗落抽屉根（tabindex=-1，钩子缺省契约）；关窗回焦触发点（侧栏铃铛）。
+// immediate：以 drawerVisible 翻真驱动，翻真后 nextTick 才挂监听/进焦点。
+useDialogA11y({
+  open: () => drawerVisible.value,
+  dialog: drawerEl,
+  z: DIALOG_Z.underTop,
+  close: closeDrawer,
+  escapeYield: () => confirmState.open || promptState.open,
+  immediate: true,
+})
 
 function formatTime(ts: number) {
   if (!ts) return ''
@@ -35,6 +60,18 @@ function handleItemClick(item: Notification) {
     closeDrawer()
   }
 }
+
+// 清空不可逆，先经全局 useConfirm 确认（danger 档）；失败回执由 useNotification
+// 的 showErrorToast 承载，抽屉不静默。
+async function handleClear() {
+  const accepted = await confirm({
+    title: '清空所有通知',
+    description: `将删除全部 ${notifications.value.length} 条通知历史，此操作不可撤销。确定要清空吗？`,
+    confirmLabel: '清空',
+    tone: 'danger',
+  })
+  if (accepted) await clearHistory()
+}
 </script>
 
 <template>
@@ -47,7 +84,15 @@ function handleItemClick(item: Notification) {
 
       <!-- 抽屉主体 -->
       <Transition name="drawer-slide">
-        <aside v-if="drawerVisible" class="notification-drawer">
+        <aside
+          v-if="drawerVisible"
+          ref="drawerEl"
+          class="notification-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="通知中心"
+          tabindex="-1"
+        >
           <div class="drawer-header">
             <div class="header-left">
               <h3><AppIcon name="bell" :size="15" /> 通知中心</h3>
@@ -65,7 +110,7 @@ function handleItemClick(item: Notification) {
               <button
                 v-if="notifications.length > 0"
                 class="btn-text"
-                @click="clearHistory"
+                @click="handleClear"
                 title="清空所有通知"
               >
                 清空
@@ -76,18 +121,29 @@ function handleItemClick(item: Notification) {
 
           <!-- 列表容器 -->
           <div class="drawer-body">
-            <div v-if="notifications.length === 0" class="empty-state">
+            <!-- 加载失败：保留可重试错误条（toast 之外的上下文内反馈），不静默 -->
+            <div v-if="historyError" class="error-box drawer-error" role="alert">
+              <p class="drawer-error-msg">通知历史加载失败：{{ historyError }}</p>
+              <button class="btn btn-secondary btn-small" @click="loadHistory">重试</button>
+            </div>
+            <div v-else-if="notifications.length === 0" class="empty-state">
               <div class="empty-icon"><AppIcon name="inbox" :size="36" /></div>
               <p>暂无任何通知</p>
             </div>
 
             <div v-else class="notif-list">
+              <!-- 行用 role=button+tabindex 补键盘可达（内含块级 div/p，不宜换真 button）；
+                   Enter/Space 触发，Space preventDefault 防滚动。Tab 环由 useDialogA11y 困窗。 -->
               <div
                 v-for="item in notifications"
                 :key="item.id"
                 class="notif-item"
                 :class="{ unread: !item.read }"
+                role="button"
+                tabindex="0"
                 @click="handleItemClick(item)"
+                @keydown.enter="handleItemClick(item)"
+                @keydown.space.prevent="handleItemClick(item)"
               >
                 <div class="notif-top">
                   <div class="notif-meta">
@@ -114,6 +170,7 @@ function handleItemClick(item: Notification) {
   inset: 0;
   background: var(--overlay-mask);
   backdrop-filter: blur(1.5px);
+  /* 背板专属档（低于本体）；抽屉整体降入对话框下档，confirm/prompt/snackbar 浮于其上 */
   z-index: var(--z-drawer);
 }
 
@@ -127,6 +184,7 @@ function handleItemClick(item: Notification) {
   background: var(--surface-panel);
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-drawer);
+  /* 本体专属档 945 < App 单例对话框 1000：「清空」确认框须可点，错误回执亦可见 */
   z-index: var(--z-drawer-panel);
   display: flex;
   flex-direction: column;
@@ -160,7 +218,7 @@ function handleItemClick(item: Notification) {
   font-size: var(--text-xs);
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
 }
 
 .header-actions {
@@ -189,7 +247,7 @@ function handleItemClick(item: Notification) {
   color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
 }
 
 .btn-close:hover {
@@ -222,6 +280,20 @@ function handleItemClick(item: Notification) {
   margin: 0;
 }
 
+/* 加载失败错误条：复用全局 .error-box 原子（软底/描边/字色），本处只补布局 */
+.drawer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 16px;
+}
+
+.drawer-error-msg {
+  margin: 0;
+  word-break: break-all;
+}
+
 .notif-list {
   display: flex;
   flex-direction: column;
@@ -241,6 +313,11 @@ function handleItemClick(item: Notification) {
 
 .notif-item.unread {
   background: var(--color-primary-soft);
+}
+
+/* 未读行 hover 混合档：特异性高于 .unread 与 :hover，压住恒定的 primary-soft 底 */
+.notif-item.unread:hover {
+  background: color-mix(in srgb, var(--color-primary-soft), var(--surface-hover));
 }
 
 .notif-top {
