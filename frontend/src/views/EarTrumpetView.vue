@@ -132,7 +132,7 @@ onActivated(() => {
 </script>
 
 <template>
-  <section class="et-page">
+  <section class="page-workbench et-page">
     <MsixToolHeader logo-text="ET" title="EarTrumpet" subtitle="Windows 每应用音量控制托盘工具；Hanxi 纳管官方直装渠道（install.eartrumpet.app）。" :state-label="stateLabel" :installed="installed" :active="running" />
 
     <UiBanner v-if="error" tone="error" class="et-banner">
@@ -156,8 +156,8 @@ onActivated(() => {
     >
       <template #actions>
         <UiButton v-if="canInstall" variant="primary" :disabled="anyBusy" @click="install">{{ installBusy ? '安装中…' : installed ? `更新到 ${remoteVersion}` : '安装官方直装版' }}</UiButton>
-        <UiButton :disabled="!installed || anyBusy" @click="launch">启动</UiButton>
-        <UiButton :disabled="!running || anyBusy" @click="exit">退出</UiButton>
+        <UiButton :disabled="!installed || anyBusy" @click="launch">{{ launchBusy ? '启动中…' : '启动' }}</UiButton>
+        <UiButton :disabled="!running || anyBusy" @click="exit">{{ exitBusy ? '退出中…' : '退出' }}</UiButton>
         <UiButton :disabled="loading" @click="refresh">{{ loading ? '读取中…' : '刷新状态' }}</UiButton>
         <UiButton :disabled="anyBusy" @click="openRepo">{{ repoBusy ? '正在打开…' : '项目主页' }}</UiButton>
         <UiButton v-if="installed" variant="danger" :disabled="anyBusy" @click="requestUninstall">{{ uninstallBusy ? '卸载中…' : '卸载' }}</UiButton>
@@ -169,7 +169,8 @@ onActivated(() => {
 <style scoped>
 /* 本页不自设本地主色（--et-primary 类），统一语义 token；
    头部/状态胶囊/概览面板孪生样式在 components/tool/Msix*（§9.5-5）。 */
-.et-page{max-width:1120px;margin:0 auto;padding-bottom:28px;color:var(--color-text)}
+/* 宽度档：原私有 max-width:1120px 已删，换挂 .page-workbench（1200，最接近原宽档） */
+.et-page{padding-bottom:28px;color:var(--color-text)}
 .et-banner{margin-bottom:14px;display:flex;align-items:center;gap:10px}.et-banner span{color:inherit;opacity:.9}.et-retry{margin-left:auto}
 @media(max-width:460px){.et-page{padding-bottom:16px}.et-banner{align-items:flex-start;flex-direction:column}}
 </style>

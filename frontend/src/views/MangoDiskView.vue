@@ -33,9 +33,11 @@ const rows = computed(() => store.installed)
 const followOnExit = ref(false)
 const activeMainTab = ref<'console' | 'versions'>('console')
 
+// 页签词面对齐 ManagedConsoleShell 默认档（🔀 控制台 / 📦 版本管理），计数后缀保留
+// （versionsTabCount 形制）；spec 仅按下标切页签、无词面断言，收敛无约束偏差。
 const tabs = computed(() => [
-  { key: 'console', label: '控制台' },
-  { key: 'versions', label: `版本管理 ${rows.value.length}` },
+  { key: 'console', label: '🔀 控制台' },
+  { key: 'versions', label: `📦 版本管理 ${rows.value.length}` },
 ])
 
 const state = computed(() => store.snap?.state ?? 'stopped')
@@ -85,7 +87,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="page md-page">
+  <section class="page-workbench md-page">
     <PageHeader title="MangoDisk" subtitle="可信版本管理与原版 GUI 进程托管">
       <template #actions>
         <div class="md-state-badge" :data-state="state"><span class="md-state-light"></span>{{ stateText }}</div>
@@ -178,7 +180,9 @@ onMounted(() => {
 <style scoped>
 /* 迁移说明：按钮族/选项卡/横幅/表格/空态已由全局原子（components.css）与 ui/* 组件承载，
    本文件只留业务版式；颜色一律语义 token（docs/FRONTEND.md §7）。 */
-.md-page { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; color: var(--color-text); }
+/* 宽度档：原私有 max-width:1120px 已删，换挂 .page-workbench（1200，最接近原宽档）；
+   水平居中由全局原子承担，视图不再自写宽度/居中 */
+.md-page { display: flex; flex-direction: column; gap: 14px; color: var(--color-text); }
 /* 页头复制已删净落回 PageHeader 壳(§9 手册),标题/副标题字号由全局 .page h1/.subtitle 接管 */
 .md-toolbar, .md-control-panel, .md-settings, .md-version-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .md-toolbar span, .md-settings span { margin: 4px 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }
@@ -186,7 +190,11 @@ onMounted(() => {
 .md-state-light { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-subtle); }.md-state-badge[data-state="running"] .md-state-light { background: var(--state-positive); }.md-state-badge[data-state="starting"] .md-state-light { background: var(--color-primary); }.md-state-badge[data-state="external"] .md-state-light { background: var(--state-warning); }.md-state-badge[data-state="failed"] .md-state-light { background: var(--state-danger); }
 .md-stack { display: flex; flex-direction: column; gap: 12px; }.md-panel, .md-toolbar { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }.md-control-panel { min-height: 88px; }.md-control-main { display: flex; align-items: center; gap: 12px; min-width: 0; }.md-app-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: var(--radius-element); background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); font-size: var(--text-xl); font-weight: 700; }.md-control-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; }.md-control-copy strong, .md-mono { font-family: var(--font-mono); }.md-control-copy span { color: var(--color-text-muted); font-size: var(--text-sm); }
 .md-actions, .md-row-actions { display: flex; gap: 8px; align-items: center; }
-.md-settings > div:first-child { display: flex; flex-direction: column; gap: 2px; }.md-settings-actions { display: flex; align-items: center; gap: 10px; }.md-switch { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }.md-switch span { width: 32px; height: 18px; border-radius: var(--radius-pill); background: var(--color-border); position: relative; }.md-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--color-text-inverse); transition: transform var(--motion-base); }.md-switch[aria-pressed="true"] span { background: var(--color-primary); }.md-switch[aria-pressed="true"] span::after { transform: translateX(14px); }
+/* 退出联动开关（P1-3）：滑块取 --surface-panel、关闭态轨道取 --color-text-muted——
+   面板滑块对 muted 轨道实算浅 4.55:1 / 深 7.45:1（≥3:1 非文本达标）；审计建议的
+   border-strong/subtle 浅色侧分别仅 1.49/2.91 不达标，故取 muted。开启态轨道仍
+   --color-primary（滑块对比浅 4.62 / 深 7.17）。 */
+.md-settings > div:first-child { display: flex; flex-direction: column; gap: 2px; }.md-settings-actions { display: flex; align-items: center; gap: 10px; }.md-switch { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }.md-switch span { width: 32px; height: 18px; border-radius: var(--radius-pill); background: var(--color-text-muted); position: relative; }.md-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface-panel); transition: transform var(--motion-base); }.md-switch[aria-pressed="true"] span { background: var(--color-primary); }.md-switch[aria-pressed="true"] span::after { transform: translateX(14px); }
 .md-notes h2, .md-section-head h2 { margin: 0; font-size: var(--text-md); }.md-note-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 12px; }.md-note-grid > div { display: flex; flex-direction: column; gap: 5px; padding: 11px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-page); }.md-note-grid span { color: var(--color-text-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }.md-license { margin-top: 12px; color: var(--color-text-subtle); font-size: var(--text-xs); }.md-license button { border: 0; background: none; padding: 0; color: var(--color-primary); cursor: pointer; }
 .md-section-head { display: flex; justify-content: space-between; margin-bottom: 12px; }.md-section-head p { color: var(--color-text-muted); font-size: var(--text-sm); margin: 4px 0 0; }.md-version-list { display: flex; flex-direction: column; gap: 8px; }.md-version-row { padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-page); }.md-version-main { min-width: 0; }.md-version-title { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }.md-version-main p { margin: 5px 0; color: var(--color-text-muted); font-size: var(--text-sm); }.md-meta, .md-integrity-detail { display: flex; flex-wrap: wrap; gap: 10px; color: var(--color-text-subtle); font-size: var(--text-xs); }.md-integrity-detail { margin-top: 6px; color: var(--state-danger); }.md-pill { padding: 2px 7px; font-size: var(--text-micro); }.md-pill-primary { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border)); }.md-pill-ok, .md-pill[data-integrity="verified"] { color: var(--state-positive); }.md-pill[data-integrity="drifted"] { color: var(--state-warning); }.md-pill[data-integrity="invalid"] { color: var(--state-danger); }
 .md-state-box { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 18px; border: 1px dashed var(--color-border); border-radius: var(--radius-control); background: var(--surface-page); color: var(--color-text-muted); font-size: var(--text-sm); }.md-state-box strong { color: var(--color-text); }.md-error strong { color: var(--state-danger); }

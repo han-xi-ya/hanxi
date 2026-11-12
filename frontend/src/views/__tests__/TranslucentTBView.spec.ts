@@ -320,10 +320,10 @@ describe('TranslucentTBView 版本管理 Tab（共享 ManagedVersionPanel 全量
     expect(wrapper.find('.dl-meta-text').text()).toBe('校验解压安装…')
     wrapper.unmount()
 
-    // 已装则共享面板以 btn-ghost 标记且无下载钮
+    // 已装则共享面板以静态 chip 标记（P2-7 删 ghost 钮悬停伪装）且无下载钮
     stubDefaults({ state: 'stopped' }, { installed: [installed20262] })
     const r = await mountInKeepAlive()
-    expect(r.wrapper.find('.tbl .btn-ghost').text()).toBe('已安装')
+    expect(r.wrapper.find('.tbl .chip').text()).toBe('已安装')
     r.wrapper.unmount()
   })
 
@@ -611,11 +611,17 @@ describe('TranslucentTBView 打包版区块（状态/缓存/降级/动词）', (
     wrapper.unmount()
   })
 
-  it('缓存移除：运行中拦截等后端错误文案原样透传 toast（不加前缀）；成功走回执+重读', async () => {
+  it('缓存移除：danger 确认后走 RemoveMsixCache；运行中拦截错误原样透传 toast；成功走回执+重读', async () => {
     stubDefaults({ state: 'stopped' }, { msix: msixInstalledState })
     svc.RemoveMsixCache.mockRejectedValue(new Error('打包版 2026.2 正在运行，其安装包暂不可移除'))
     const { wrapper } = await mountInKeepAlive()
     await wrapper.findAll('.tb-msix-cache-row')[0].findAll('button')[0].trigger('click')
+    await flushMicrotasks()
+    // P2-11：不可逆缓存移除补 danger 确认（对齐 NanaZip），确认前不调后端
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(svc.RemoveMsixCache).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flushMicrotasks()
     expect(svc.RemoveMsixCache).toHaveBeenCalledWith('2026.2')
     expect(useToast().toastMsg.value).toBe('打包版 2026.2 正在运行，其安装包暂不可移除')
@@ -626,6 +632,8 @@ describe('TranslucentTBView 打包版区块（状态/缓存/降级/动词）', (
     const r = await mountInKeepAlive()
     const readsBefore = svc.GetMsixState.mock.calls.length
     await r.wrapper.findAll('.tb-msix-cache-row')[0].findAll('button')[0].trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('已移除打包版安装包缓存 2026.2')
     expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1)

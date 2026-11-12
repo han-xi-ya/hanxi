@@ -162,9 +162,9 @@ const VOL_TYPES: Record<string, string> = {
         <h3 class="sys-card-title">处理器</h3>
         <div class="sys-kv"><span class="k">型号</span><span class="mono v">{{ report.cpu.name || '—' }}</span></div>
         <div class="sys-kv"><span class="k">厂商</span><span class="v">{{ report.cpu.vendor || '—' }}</span></div>
-        <div class="sys-kv"><span class="k">核数 / 线程</span><span class="v">{{ report.cpu.cores || '?' }} C / {{ report.cpu.logical }} T</span></div>
-        <div class="sys-kv"><span class="k">标称频率</span><span class="v">{{ report.cpu.speedMHz ? `${report.cpu.speedMHz} MHz（当前值）` : '—' }}</span></div>
-        <div v-if="report.cpu.sockets > 1" class="sys-kv"><span class="k">物理处理器</span><span class="v">{{ report.cpu.sockets }} 颗</span></div>
+        <div class="sys-kv"><span class="k">核数 / 线程</span><span class="v mono">{{ report.cpu.cores || '?' }} C / {{ report.cpu.logical }} T</span></div>
+        <div class="sys-kv"><span class="k">标称频率</span><span class="v mono">{{ report.cpu.speedMHz ? `${report.cpu.speedMHz} MHz（当前值）` : '—' }}</span></div>
+        <div v-if="report.cpu.sockets > 1" class="sys-kv"><span class="k">物理处理器</span><span class="v mono">{{ report.cpu.sockets }} 颗</span></div>
       </div>
 
       <!-- 内存 -->
@@ -176,12 +176,12 @@ const VOL_TYPES: Record<string, string> = {
               {{ purgeBusy && purgeKind === 'standby' ? '清理中…' : '清理可回收内存' }}
             </button>
             <button class="btn btn-secondary btn-small" :disabled="purgeBusy" title="RAMMap 同款谨慎动作：强行压回各进程工作集，随后几秒普遍变卡" @click="emptyWorkingSets">
-              {{ purgeBusy && purgeKind === 'workingsets' ? '收集中…' : '清空工作集' }}
+              {{ purgeBusy && purgeKind === 'workingsets' ? '清空中…' : '清空工作集' }}
             </button>
           </div>
         </div>
-        <div class="sys-kv"><span class="k">物理总量</span><span class="v">{{ fmtSize(report.memory.totalBytes) }}</span></div>
-        <div class="sys-kv"><span class="k">可用</span><span class="v">{{ fmtSize(report.memory.availableBytes) }}</span></div>
+        <div class="sys-kv"><span class="k">物理总量</span><span class="v mono">{{ fmtSize(report.memory.totalBytes) }}</span></div>
+        <div class="sys-kv"><span class="k">可用</span><span class="v mono">{{ fmtSize(report.memory.availableBytes) }}</span></div>
         <template v-if="purgeResult && purgeResult.success">
           <div class="sys-kv"><span class="k">清理账目</span><span class="v">{{ purgeLedgerText(purgeResult) }}</span></div>
           <div v-if="purgeKind === 'workingsets'" class="sys-kv"><span class="k">回执</span><span class="v">已收 {{ purgeResult.processesEmptied ?? 0 }} 个进程工作集，跳过 {{ purgeResult.processesSkipped ?? 0 }} 个（打不开/受保护）</span></div>
@@ -189,7 +189,7 @@ const VOL_TYPES: Record<string, string> = {
         <div class="sys-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="report.memory.loadPercent" aria-label="内存占用">
           <div class="sys-bar-inner" :class="{ warn: report.memory.loadPercent > 80 }" :style="{ width: `${report.memory.loadPercent}%` }"></div>
         </div>
-        <div class="sys-kv"><span class="k">占用</span><span class="v">{{ report.memory.loadPercent }}%</span></div>
+        <div class="sys-kv"><span class="k">占用</span><span class="v mono">{{ report.memory.loadPercent }}%</span></div>
         <div class="sys-kv"><span class="k">提交</span><span class="v mono">{{ fmtSize(report.memory.commitTotal) }} / {{ fmtSize(report.memory.commitLimit) }}</span></div>
         <p class="sys-action-note">{{ purgeResult && purgeResult.success ? purgeScopeNote() : '两按钮各管一格：待机页列表可回收清理 / 全进程工作集强压。均不关程序、不删文件；清理后热数据可能重新从磁盘预热。' }}</p>
         <p v-if="purgeResult && !purgeResult.success" class="sys-action-error" role="alert">{{ purgeResult.message }}</p>
@@ -199,11 +199,11 @@ const VOL_TYPES: Record<string, string> = {
       <div class="sys-card">
         <h3 class="sys-card-title">操作系统</h3>
         <div class="sys-kv"><span class="k">版本</span><span class="v">{{ report.os.productName }}{{ report.os.edition ? `（${report.os.edition}）` : '' }}</span></div>
-        <div class="sys-kv"><span class="k">特性更新</span><span class="v">{{ report.os.version || '—' }}</span></div>
+        <div class="sys-kv"><span class="k">特性更新</span><span class="v mono">{{ report.os.version || '—' }}</span></div>
         <div class="sys-kv"><span class="k">构建号</span><span class="v mono">{{ report.os.build }}</span></div>
         <div class="sys-kv"><span class="k">位数</span><span class="v">{{ report.os.is64Bit ? '64 位' : '32 位' }}</span></div>
-        <div class="sys-kv"><span class="k">装机日期</span><span class="v">{{ report.os.installDate || '—' }}</span></div>
-        <div class="sys-kv"><span class="k">已开机</span><span class="v">{{ report.os.uptime }}</span></div>
+        <div class="sys-kv"><span class="k">装机日期</span><span class="v mono">{{ report.os.installDate || '—' }}</span></div>
+        <div class="sys-kv"><span class="k">已开机</span><span class="v mono">{{ report.os.uptime }}</span></div>
       </div>
 
       <!-- 整机与固件 -->
@@ -227,7 +227,7 @@ const VOL_TYPES: Record<string, string> = {
         <div v-for="(d, i) in report.displays" :key="'disp' + i" class="sys-sub">
           <div class="sys-kv">
             <span class="k">显示器{{ d.primary ? '（主）' : '' }}</span>
-            <span class="v">{{ d.width }}×{{ d.height }}{{ d.refreshHz ? ` @ ${d.refreshHz}Hz` : '' }}{{ d.colorBits ? ` · ${d.colorBits}bit` : '' }}</span>
+            <span class="v mono">{{ d.width }}×{{ d.height }}{{ d.refreshHz ? ` @ ${d.refreshHz}Hz` : '' }}{{ d.colorBits ? ` · ${d.colorBits}bit` : '' }}</span>
           </div>
         </div>
         <div class="hint-dim">EDID 品牌型号未采集（需 WMI，本模块边界内如实缺席）。</div>
@@ -252,7 +252,9 @@ const VOL_TYPES: Record<string, string> = {
       <!-- 网络接口 -->
       <div class="sys-card sys-card-wide">
         <h3 class="sys-card-title">网络接口</h3>
-        <table class="tbl">
+        <!-- 固定列宽表套内滚容器：窄屏/200% 缩放在卡内横滚，不撑破整页 -->
+        <div class="sys-table-wrap">
+          <table class="tbl">
           <thead>
             <tr><th style="width: 200px;">接口</th><th style="width: 150px;">MAC</th><th style="width: 60px;">MTU</th><th style="width: 70px;">状态</th><th>地址</th></tr>
           </thead>
@@ -260,12 +262,13 @@ const VOL_TYPES: Record<string, string> = {
             <tr v-for="n in report.network" :key="n.name">
               <td>{{ n.name }}<span v-if="n.loopback" class="chip chip-neutral" style="margin-left: 6px;">环回</span></td>
               <td class="mono">{{ n.mac || '—' }}</td>
-              <td>{{ n.mtu }}</td>
+              <td class="mono">{{ n.mtu }}</td>
               <td><span :class="['ver-status', n.up ? 'installed' : 'idle']">{{ n.up ? '启用' : '停用' }}</span></td>
               <td class="mono">{{ sortNetAddresses(n.addresses).join('、') || '—' }}</td>
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </section>
@@ -274,9 +277,12 @@ const VOL_TYPES: Record<string, string> = {
 <style scoped>
 /* 家族原子（page/btn/chip/banner/tbl/mono/hint-dim/status-toolbar）由全局样式层
    承担；本视图私有形仅 sys-grid/sys-card/kv/bar 档案家族（sys- 前缀纪律） */
-.sys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+/* 轨最小宽随视口收缩（min(340px,100%)）：窄屏/200% 缩放不再横向溢出整页 */
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px; }
 .sys-card-wide { grid-column: 1 / -1; }
-.sys-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-card, 10px); padding: 14px 16px; }
+/* 网络表内滚外壳：只包 overflow，不叠加边框/底色（外层 sys-card 已有）；滚动条皮肤走 base.css 全局 */
+.sys-table-wrap { overflow-x: auto; }
+.sys-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element); padding: 14px 16px; }
 .sys-card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); margin: 0 0 10px; }
 .sys-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sys-card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -285,9 +291,10 @@ const VOL_TYPES: Record<string, string> = {
 .sys-action-error { margin: 6px 0 0; font-size: var(--text-xs); color: var(--state-danger); }
 .sys-kv { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; font-size: var(--text-sm); }
 .sys-kv .k { flex: 0 0 92px; color: var(--color-text-subtle); }
-.sys-kv .v { color: var(--color-text); word-break: break-all; }
+/* 变化数值（占用% 等）等宽数字防抖动；机器值行另挂 .mono（全局原子含 tabular-nums） */
+.sys-kv .v { color: var(--color-text); word-break: break-all; font-variant-numeric: tabular-nums; }
 .sys-sub + .sys-sub { border-top: 1px dashed var(--color-border); margin-top: 8px; padding-top: 8px; }
-.sys-bar-wrap { height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+.sys-bar-wrap { height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; margin: 6px 0 4px; }
 .sys-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
 .sys-bar-inner.warn { background: var(--state-warning); }
 /* 状态点借用托管家族 .ver-status 选择器语义；scoped 隔离看不到别处样式，本页最小实现 */

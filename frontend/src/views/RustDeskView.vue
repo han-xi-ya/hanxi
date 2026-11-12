@@ -154,28 +154,55 @@ async function quitRustDesk() {
 
 // ---------- 版本管理操作 ----------
 async function download(rel: RDRelease) {
+  // 双击窗口封闸（对齐 FrpcVersionsTab/store.runDownload 占位票口径）：RPC 返还前
+  // 行仍判 idle、钮可连点——先挂 resolve 票占位，statusOf 随即转 downloading，钮位让位进度行。
+  const existing = downloading.value[rel.version]
+  if (existing && existing.stage !== 'error') return
+  downloading.value = {
+    ...downloading.value,
+    [rel.version]: { version: rel.version, kind: '', stage: 'resolve', done: 0, total: 0, message: '正在创建下载任务…' },
+  }
   try {
     const res = await RustDeskAPI.DownloadVersion(rel.version)
     if (res === 'already-installed') {
       showToast(`版本 ${rel.version} 已安装`)
       await loadVersions()
+      const next = { ...downloading.value }
+      delete next[rel.version]
+      downloading.value = next
     }
   } catch (e) {
     showToast(`下载失败: ${getErrorMessage(e)}`)
+    const next = { ...downloading.value }
+    delete next[rel.version]
+    downloading.value = next
   }
 }
 
 // 安装版一键"下载并安装"：安装本体是 Windows Installer 前台向导（含 UAC），
 // 进度（下载/校验）走事件，装机动作由用户在弹出的向导中完成。
 async function install(rel: RDRelease) {
+  // 同 download 占位票口径（安装版通道 kind=installer）
+  const existing = installing.value[rel.version]
+  if (existing && existing.stage !== 'error') return
+  installing.value = {
+    ...installing.value,
+    [rel.version]: { version: rel.version, kind: 'installer', stage: 'resolve', done: 0, total: 0, message: '正在创建安装任务…' },
+  }
   try {
     const res = await RustDeskAPI.InstallVersion(rel.version)
     if (res === 'already-installed') {
       showToast(`RustDesk 安装版 ${rel.version} 已在系统中`)
       await loadVersions()
+      const next = { ...installing.value }
+      delete next[rel.version]
+      installing.value = next
     }
   } catch (e) {
     showToast(`安装发起失败: ${getErrorMessage(e)}`)
+    const next = { ...installing.value }
+    delete next[rel.version]
+    installing.value = next
   }
 }
 
@@ -471,7 +498,7 @@ onMounted(async () => {
       <!-- 已安装版本 -->
       <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
 
-      <UiEmptyState v-if="installed.length === 0">
+      <UiEmptyState v-if="installed.length === 0 && !loading">
         <p>尚未安装 RustDesk —— 下载官方便携版 / 安装系统版，或「导入本地便携版」把现有下载收纳进来</p>
         <div class="empty-btns">
           <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
@@ -568,7 +595,7 @@ onMounted(async () => {
                 <div class="ch-actions">
                   <template v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'">
                     <div class="download-cell">
-                      <div class="dl-bar-wrap">
+                      <div class="dl-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="stepOf(downloading[rel.version]!)" aria-label="下载进度">
                         <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
                       </div>
                       <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
@@ -583,13 +610,13 @@ onMounted(async () => {
                   </div>
                   <button v-if="statusOf(rel) === 'idle'" class="btn btn-primary btn-small" @click="download(rel)">下载便携版</button>
                   <span v-if="statusOf(rel) === 'installed'" class="installed-tag">便携已装</span>
-                  <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="download(rel)">重试</a>
+                  <button v-if="statusOf(rel) === 'error'" type="button" class="retry-link" @click="download(rel)">重试</button>
                 </div>
                 <!-- 安装版通道 -->
                 <div v-if="installStatusOf(rel) !== 'unavailable'" class="ch-actions">
                   <template v-if="installStatusOf(rel) === 'downloading' && installing[rel.version]!.stage === 'downloading'">
                     <div class="download-cell">
-                      <div class="dl-bar-wrap">
+                      <div class="dl-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="stepOf(installing[rel.version]!)" aria-label="安装进度">
                         <div class="dl-bar-inner" :style="{ width: `${stepOf(installing[rel.version]!)}%` }"></div>
                       </div>
                       <span class="dl-percent">{{ stepOf(installing[rel.version]!) }}%</span>
@@ -610,12 +637,12 @@ onMounted(async () => {
                     @click="install(rel)"
                   >安装系统版</button>
                   <span v-if="installStatusOf(rel) === 'installed'" class="installed-tag">系统版已装</span>
-                  <a v-if="installStatusOf(rel) === 'error'" class="retry-link" @click="install(rel)">重试</a>
+                  <button v-if="installStatusOf(rel) === 'error'" type="button" class="retry-link" @click="install(rel)">重试</button>
                 </div>
               </td>
             </tr>
             <tr v-if="releases.length === 0 && !loading">
-              <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
+              <td colspan="5" class="empty-hint">{{ listError ? '远程版本列表加载失败——可稍后点击「↻ 刷新远程列表」重试' : '暂无远程发布版本——可稍后点击「↻ 刷新远程列表」' }}</td>
             </tr>
           </tbody>
         </table>
@@ -632,10 +659,9 @@ onMounted(async () => {
 
 /* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
    本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
-/* 补差 against 全局原子 .control-bar / .ver-pill：本视图控制条与版本胶囊为小圆角方片形制
-   （标准形为 radius-element / radius-pill） */
+/* 补差 against 全局原子 .control-bar：控制条取 radius-control 小一档（密度裁决保留）；
+   版本胶囊方片方言已删（2026-11-12 精致化批：落回全局 .ver-pill 胶囊标准形） */
 .control-bar { border-radius: var(--radius-control); }
-.ver-pill { border-radius: 4px; }
 /* 信号灯类名带 rd- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .rd-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
 .rd-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }

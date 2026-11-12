@@ -300,14 +300,16 @@ onActivated(() => {
 </script>
 
 <template>
+  <!-- 页签词面收敛：显式声明壳默认词（原裸「控制台/版本管理」为无 spec 约束偏差；
+       spec 只断言 #snipaste-versions-panel 与前往版本管理钮词，页签 id/文案不受影响） -->
   <ManagedConsoleShell
-    class="snipaste-view"
+    class="snipaste-view page-workbench"
     :adapter="adapter"
     :store="store"
     title="Snipaste"
     subtitle="管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。"
-    console-tab-label="控制台"
-    versions-tab-label="版本管理"
+    console-tab-label="🔀 控制台"
+    versions-tab-label="📦 版本管理"
     tab-id-prefix="snipaste"
     tab-label="Snipaste 页面"
   >
@@ -373,7 +375,6 @@ onActivated(() => {
 </template>
 
 <style scoped>
-.snipaste-view { max-width: 1120px; margin: 0 auto; }
 .snipaste-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-control); color: var(--color-primary); background: var(--surface-selected); }
 .snipaste-mark svg { width: 25px; height: 25px; }
 .info-panel { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }

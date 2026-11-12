@@ -33,5 +33,5 @@ const adapter = createKeyvizAdapter()
 <style scoped>
 /* 页头/控制条/版本区/联动卡/页签与 flex 骨架全部由 managed 组件 + components.css 全局原子接管；
    本页仅余 kbd 键帽这一处私有形（内联链接落回全局原子）*/
-.info-body kbd { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 0 4px; }
+.info-body kbd { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-micro); padding: 0 4px; }
 </style>

@@ -20,9 +20,12 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
 const activeTab = ref<'install' | 'versions'>('install')
+// 页签词面对齐托管家族默认档（🔀 控制台 / 📦 版本管理）：spec 仅按下标切页签，
+// 「安装管理/版本资源」只出现在注释非断言，收敛无约束偏差；页内「从版本资源选择」
+// 引导语指面板区名，不随页签改词。
 const tabs = [
-  { key: 'install', label: '安装管理' },
-  { key: 'versions', label: '版本资源' },
+  { key: 'install', label: '🔀 控制台' },
+  { key: 'versions', label: '📦 版本管理' },
 ]
 const snapshot = ref<PackageSnapshot | null>(null)
 const releases = ref<Release[]>([])
@@ -157,7 +160,7 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
 </script>
 
 <template>
-  <section class="nanazip-page">
+  <section class="page-workbench nanazip-page">
     <MsixToolHeader logo-text="NZ" title="NanaZip" subtitle="管理官方 stable MSIX 完整版，由 Windows 提供右键菜单、文件关联与包生命周期。" :state-label="stateLabel" :installed="installed" :active="operationBusy" />
 
     <MainTabNav :tabs="tabs" :model-value="activeTab" label="NanaZip 页面" @update:model-value="activeTab = $event as 'install' | 'versions'" />
@@ -239,7 +242,8 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
 <style scoped>
 /* 设计 token 引用规范见 docs/FRONTEND.md §7：本视图不再本地定义私有调色板；
    头部/状态胶囊/概览面板孪生样式已上收 components/tool/Msix*（§9.5-5）。 */
-.nanazip-page{max-width:1120px;margin:0 auto;padding-bottom:28px;color:var(--color-text)}
+/* 宽度档：原私有 max-width:1120px 已删，换挂 .page-workbench（1200，最接近原宽档） */
+.nanazip-page{padding-bottom:28px;color:var(--color-text)}
 .nanazip-stale-banner{margin-bottom:10px}
 .nanazip-panel{margin-bottom:14px;padding:18px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-panel);box-shadow:var(--shadow-small)}
 .nanazip-repo{margin-bottom:14px}

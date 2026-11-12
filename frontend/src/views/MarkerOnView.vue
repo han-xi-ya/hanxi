@@ -19,7 +19,8 @@ function drawingOf(snap: ManagedSnapshot | null): boolean {
   return !!(snap as { drawing?: boolean } | null)?.drawing
 }
 
-/** 六态矩阵单帧投影：钮体各绑定位与点击判定共用这一次计算结果。 */
+/** 六态矩阵单帧投影：v-for 单元别名是 Vue 模板局部变量惯用法，
+ * 钮体各绑定位共用这一次计算结果（纯函数无副作用，勿拆回多次调用）。 */
 function toggleViewOf(scope: { state: string; busy: boolean; installedCount: number; snap: ManagedSnapshot | null }): AnnotateToggleView {
   return annotateToggleView({ state: scope.state, drawing: drawingOf(scope.snap), busy: scope.busy, installedCount: scope.installedCount })
 }
@@ -45,6 +46,7 @@ function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
     <template #primary-action="scope">
       <!-- 单帧一次投影：v-for 单元别名是 Vue 模板局部变量惯用法，
            钮体各绑定位共用这一次计算结果（纯函数无副作用，勿拆回多次调用） -->
+      <!-- eslint-disable vue/valid-v-for -- 单元素数组 v-for 是模板局部别名惯用法（单帧一次投影），key 恒 0 合法 -->
       <button
         v-for="view in [toggleViewOf(scope)]"
         :key="0"
@@ -54,6 +56,7 @@ function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
         :title="view.title"
         @click="onToggle(scope.store, view)"
       >✎ {{ view.label }}</button>
+      <!-- eslint-enable vue/valid-v-for -->
     </template>
 
     <!-- 控制台 Tab 主体：状态说明六行（含与 banner 并存的原形态）+ 快捷键说明卡 -->
@@ -94,10 +97,14 @@ function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
 .btn-toggle-outline:hover:not(:disabled) { background: var(--surface-selected); }
 .btn-toggle-warn { background: var(--state-warning-soft); border-color: var(--state-warning); color: var(--state-warning); }
 .btn-toggle-danger { background: var(--surface-panel); border-color: var(--state-danger); color: var(--state-danger); }
+/* warn/danger 补 hover 软底加深档（对齐 primary/outline 变体的 :hover:not(:disabled) 形制）：
+   warn 软底向状态色加浓 8%、danger 描边底向状态色加浓 10%，色相不变、禁用态不响应 */
+.btn-toggle-warn:hover:not(:disabled) { background: color-mix(in srgb, var(--state-warning) 8%, var(--state-warning-soft)); }
+.btn-toggle-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--state-danger) 10%, var(--surface-panel)); }
 
 /* ---------- 状态说明行（渲染于状态头之后） ---------- */
 .control-detail { font-size: var(--text-sm); color: var(--color-text-subtle); }
 /* info-* 折叠卡家族与 hint-dim 由 components.css 全局原子接管 */
 .kbd-row { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.kbd-chip { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 8px; color: var(--color-text); }
+.kbd-chip { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-micro); padding: 2px 8px; color: var(--color-text); }
 </style>

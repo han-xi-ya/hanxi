@@ -22,6 +22,11 @@ const occupants = shallowRef<PortOccupant[]>([])
 const listeningList = shallowRef<PortOccupant[]>([])
 const searching = ref(false)
 const errorMsg = ref('')
+// 结果落地的端口：仅 QueryPort 成功归位时更新——结果卡标题/空态只认它，
+// 不随 inputPort 先行改口，杜绝「标题新端口 × 行旧进程」的错位窗口。
+const queriedPort = ref<number | null>(null)
+// 最近一次错误是否来自端口查询（决定错误框是否带「重试」出口）
+const queryFailed = ref(false)
 
 // 快捷端口预设
 const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
@@ -41,6 +46,7 @@ async function loadListeningPorts() {
     const list = await PortKillAPI.PortKillService.ListListeningPorts()
     listeningList.value = sortReleasableFirst(list ?? [])
   } catch (e: unknown) {
+    queryFailed.value = false
     errorMsg.value = `获取端口占用列表失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
@@ -62,16 +68,23 @@ async function searchPort(portVal?: number) {
   inputPort.value = p
   const seq = ++querySeq
   searching.value = true
+  // 发起即遮蔽旧行（查询在途不出旧结果卡）；旧数据清位，失败不残留伪结果
+  occupants.value = []
   errorMsg.value = ''
+  queryFailed.value = false
   try {
     const res = await PortKillAPI.PortKillService.QueryPort(p)
     if (seq !== querySeq) return // 迟到的旧查询：结果已被更新的一次发起取代
     occupants.value = sortReleasableFirst(res ?? [])
+    queriedPort.value = p
     if (occupants.value.length === 0) {
       showToast(`端口 ${p} 当前未被占用`)
     }
   } catch (e: unknown) {
     if (seq !== querySeq) return
+    // 失败即撤空态锚点：错误框+重试呈现，不冒充「未被占用」
+    queriedPort.value = null
+    queryFailed.value = true
     errorMsg.value = `查询端口失败: ${getErrorMessage(e)}`
   } finally {
     if (seq === querySeq) searching.value = false
@@ -86,7 +99,8 @@ function selectQuickPort(port: number) {
 // 释放端口：危险确认经全局 useConfirm 单例；确认后弹层落定，
 // 查杀期由 killing 门禁禁用全页释放按钮（含 UAC 提权等待窗口）。
 async function requestKill(occ: PortOccupant) {
-  if (killing.value) return
+  // 查询在途同样门禁：行可能即将被新结果取代，防止对旧 PID 行发起查杀
+  if (killing.value || searching.value) return
   const accepted = await confirm({
     title: '确认终止进程并释放端口？',
     description: '即将终止以下进程，端口将被立即释放：',
@@ -211,6 +225,7 @@ onMounted(() => {
           min="1"
           max="65535"
           placeholder="输入端口号 (如 8080)"
+          aria-label="端口号"
           class="input-port"
           @keydown.enter="searchPort()"
         />
@@ -233,12 +248,20 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
+    <!-- 错误常驻可见：查询失败给重试出口，刷新失败仅重拉监听表 -->
+    <div v-if="errorMsg" class="error-box">
+      {{ errorMsg }}
+      <button v-if="queryFailed" class="state-action" @click="searchPort()">重试</button>
+    </div>
 
-    <!-- 单个端口查询结果卡片 -->
-    <div v-if="occupants.length > 0" class="card result-card">
+    <!-- 单个端口查询状态区（查询中/空态/占用详情互斥；标题只认 queriedPort，与行数据同帧落地） -->
+    <div v-if="searching" class="state-box" role="status">正在查询端口 :{{ inputPort }} 的占用情况…</div>
+    <div v-else-if="queriedPort !== null && occupants.length === 0" class="card result-card">
+      <div class="empty-hint">端口 {{ queriedPort }} 未被占用 —— 可改查其他端口，或从历史回填重查。</div>
+    </div>
+    <div v-else-if="occupants.length > 0" class="card result-card">
       <div class="card-header">
-        <h3>端口 :{{ inputPort }} 占用详情</h3>
+        <h3>端口 :{{ queriedPort }} 占用详情</h3>
         <span class="pk-head-actions">
           <UiStatusChip tone="danger">占用中 ({{ occupants.length }})</UiStatusChip>
           <button class="btn btn-secondary btn-small" @click="copyRows(occupants, `已复制 ${occupants.length} 条占用详情`)">复制详情</button>
@@ -275,7 +298,7 @@ onMounted(() => {
                 <button
                   v-if="!occ.isProtected"
                   class="btn btn-danger-outline btn-micro"
-                  :disabled="killing"
+                  :disabled="killing || searching"
                   @click="requestKill(occ)"
                 >
                   释放端口
@@ -331,7 +354,7 @@ onMounted(() => {
                 <button
                   v-if="!occ.isProtected"
                   class="btn btn-danger-outline btn-micro"
-                  :disabled="killing"
+                  :disabled="killing || searching"
                   @click="requestKill(occ)"
                 >
                   释放端口
@@ -409,7 +432,7 @@ onMounted(() => {
 .tag-btn {
   background: var(--surface-page);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   padding: 3px 8px;
   font-size: var(--text-sm);
   cursor: pointer;
@@ -470,8 +493,9 @@ onMounted(() => {
   text-overflow: ellipsis;
   vertical-align: bottom;
 }
+/* 常显低透明度：粗指针无 hover 也可发现可点；行悬停/键盘聚焦提满 */
 .col-path .link-button {
-  opacity: 0;
+  opacity: .55;
   transition: opacity var(--motion-base) ease;
 }
 tr:hover .col-path .link-button,

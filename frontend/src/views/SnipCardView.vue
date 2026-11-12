@@ -56,7 +56,13 @@ function onCardWheel(e: WheelEvent) {
 }
 
 function apply(r: SnipResult | null | undefined) {
-  if (!r || !r.ok) return // 只认成功帧；空帧/取消帧不得顶掉已有内容
+  if (!r) return // 空帧不顶掉已有内容
+  // 取消帧：已有内容保持不动（特征测试锁定）；无内容时落取消提示，不再无限等待
+  if (r.cancelled) {
+    if (!res.value) res.value = r
+    return
+  }
+  // 失败帧（ok=false 且非取消）如实落错误态，停掉等待脉冲；成功帧照常覆盖
   res.value = r
   tip.value = ''
 }
@@ -130,6 +136,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   <div class="snip-card" role="dialog" aria-label="截屏识别结果" :style="fontSize !== SNIP_FS_DEFAULT ? { '--snip-fs': fontSize + 'px' } : {}" @wheel="onCardWheel">
     <div v-if="res?.ok && res.text" class="snip-text" tabindex="0">{{ res.text }}</div>
     <div v-else-if="res?.ok" class="snip-state">未识别到文字 —— 框选含文本的区域再试</div>
+    <!-- 失败/取消帧各落终态：不再让非 ok 帧永远转圈；错误原因如实展示 -->
+    <div v-else-if="res && res.cancelled" class="snip-state">已取消框选 —— 重新按下框选热键可再试</div>
+    <div v-else-if="res" class="snip-state snip-error" role="alert">识别失败：{{ res.error || '未知原因' }}</div>
     <div v-else class="snip-state"><span class="snip-pulse" aria-hidden="true"></span>等待识别结果…</div>
 
     <footer class="snip-foot">
@@ -199,6 +208,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   animation: snip-pulse 1.2s ease-in-out infinite;
 }
 @keyframes snip-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+/* 失败终态：静态红字（无脉冲），长错误可折行不撑破卡窗 */
+.snip-error { color: var(--state-danger); text-align: center; overflow-wrap: anywhere; }
 .snip-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .snip-meta {
   flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-subtle);

@@ -179,7 +179,7 @@ onMounted(() => {
                           {{ variantLabel(v) }}校验解压安装…
                         </span>
                         <span v-else-if="store.downloading[`${rel.version}|${v}`]!.stage === 'downloading'" class="download-cell">
-                          <div class="dl-bar-wrap">
+                          <div class="dl-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="stepOf(store.downloading[`${rel.version}|${v}`]!)" aria-label="下载进度">
                             <div class="dl-bar-inner" :style="{ width: `${stepOf(store.downloading[`${rel.version}|${v}`]!)}%` }"></div>
                           </div>
                           <span class="dl-percent">{{ stepOf(store.downloading[`${rel.version}|${v}`]!) }}%</span>
@@ -187,7 +187,7 @@ onMounted(() => {
                         <span v-else class="dl-error" :title="store.downloading[`${rel.version}|${v}`]!.message">
                           {{ store.downloading[`${rel.version}|${v}`]!.message }}
                         </span>
-                        <a class="retry-link" @click="downloadVariant(rel, v)">重试</a>
+                        <button type="button" class="retry-link" @click="downloadVariant(rel, v)">重试</button>
                       </div>
                     </template>
                   </div>
@@ -211,11 +211,10 @@ onMounted(() => {
    （槽内容编译于本视图作用域，scoped 照常命中）与两处对标准形的补差。 */
 .bcu-view { display: flex; flex-direction: column; gap: 10px; }
 
-/* 补差 against 全局原子（标准形为 radius-element / radius-pill，本视图控制条与
-   版本胶囊为小圆角方片形制）：控制条/胶囊渲染进 ManagedControlBar 子件内部，
-   用 :deep 穿层维持逐字同形（原 .bcu-status-light 复制体已由 .status-light 标准形替代） */
+/* 补差 against 全局原子：控制条取 radius-control 小一档（本视图密度裁决保留）；
+   版本胶囊方片方言已删（2026-11-12 精致化批：落回全局 .ver-pill 胶囊标准形，
+   与其余托管台同形）；渲染进 ManagedControlBar 子件内部用 :deep 穿层 */
 .bcu-view :deep(.control-bar) { border-radius: var(--radius-control); }
-.bcu-view :deep(.ver-pill) { border-radius: 4px; }
 
 /* ---------- 折叠说明（info-details/info-summary::after/info-body p 由全局原子接管） ---------- */
 /* 补差 against 全局原子 .info-summary：本视图标题前带图标，加 4px 间距

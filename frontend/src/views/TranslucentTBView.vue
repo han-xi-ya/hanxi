@@ -37,6 +37,7 @@ import type { ManagedActionResult } from '../components/managed/adapter'
 import { releaseFormWord } from '../components/managed/adapter'
 import { useManagedConsole } from '../components/managed/store'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
+import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
@@ -45,6 +46,7 @@ const adapter = createTBAdapter()
 const store = useManagedConsole(adapter)
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 // 打包线 refs 解构供模板直读（script setup 顶层自动 unwrap）
 const msix: TBMsixSurface = adapter.msix
@@ -136,6 +138,19 @@ async function runAVProbe(): Promise<void> {
   } else if (p.target) {
     await store.runDownload(p.target)
   }
+}
+
+// 删除安装包缓存为不可逆动作：对齐 NanaZip requestRemoveCache 同款 danger 确认
+// （确认不降级）；确认后仍走 runMsix→msix.removeCache 既有链，失败裸串透传不变。
+async function requestRemoveCache(version: string): Promise<void> {
+  const accepted = await confirm({
+    title: '移除安装包缓存',
+    description: '仅删除 Hanxi 保存的可信 msixbundle 安装包，不会卸载系统中的打包版。',
+    confirmLabel: '移除缓存',
+    tone: 'danger',
+  })
+  if (!accepted) return
+  await runMsix(() => msix.removeCache(version))
 }
 </script>
 
@@ -249,7 +264,7 @@ async function runAVProbe(): Promise<void> {
               <span class="ver-tag tb-msix-cache-ver">{{ c.version }}</span>
               <span class="tb-msix-cache-size">{{ fmtSize(c.size) }}</span>
               <code class="mono tb-msix-cache-path" :title="c.path">{{ c.path }}</code>
-              <button class="btn btn-danger-outline btn-small" :disabled="store.busy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="runMsix(() => msix.removeCache(c.version))">移除</button>
+              <button class="btn btn-danger-outline btn-small" :disabled="store.busy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="requestRemoveCache(c.version)">移除</button>
             </div>
           </template>
           <p v-else class="hint-dim">暂无留存的 msixbundle 安装包缓存</p>

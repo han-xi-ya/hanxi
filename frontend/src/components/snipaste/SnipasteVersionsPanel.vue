@@ -53,10 +53,12 @@ const emit = defineEmits<{
       </div>
     </div>
 
-    <div v-if="props.localError" class="state-box state-error" role="alert"><strong>读取本地版本失败</strong><span>{{ props.localError }}</span><button class="state-action" @click="emit('refresh-local')">重试</button></div>
-
     <div class="section-title-row"><div><h2>已安装版本</h2><p>版本相互隔离，当前使用和正在运行可能是不同版本。</p></div></div>
-    <div v-if="props.localLoading && !props.installed.length" class="state-box">正在读取本地版本…</div>
+    <!-- 错误文案由视图拼好全句（含「读取本地版本失败：」前缀），此处不再叠标题；
+         错误/加载/空态/列表同链 v-if/v-else-if 互斥（参照 NanaZip 正确形），
+         本地错误在场时不再并排渲染「尚未安装」空态 -->
+    <div v-if="props.localError" class="state-box state-error" role="alert"><span>{{ props.localError }}</span><button class="state-action" @click="emit('refresh-local')">重试</button></div>
+    <div v-else-if="props.localLoading && !props.installed.length" class="state-box">正在读取本地版本…</div>
     <div v-else-if="!props.installed.length" class="state-box state-empty"><strong>尚未安装 Snipaste</strong><span>可从下方官网下载，或导入已有便携目录。</span></div>
     <div v-else class="installed-grid">
       <SnipasteVersionCard
@@ -77,9 +79,12 @@ const emit = defineEmits<{
     </div>
 
     <div class="section-title-row remote-title"><div><h2>官网 Windows x64 免安装版</h2><p>仅从 Snipaste 官方域名下载，不使用第三方镜像。</p></div></div>
-    <div v-if="props.remoteError" class="state-box state-error" role="alert"><strong>官网版本刷新失败</strong><span>{{ props.remoteError }}</span><button class="state-action" @click="emit('refresh-remote')">重试</button></div>
+    <!-- 远程错误同口径：视图全句直渲不叠标题；错误/加载/空态/列表 v-if/v-else-if 互斥，
+         杜绝「刷新失败」与「没有可用的官网版本」并排自相矛盾 -->
+    <!-- stale 缓存警示独立于错误/空态链：有缓存数据在场时照常提示（spec 逐字断言保留） -->
     <div v-if="props.stale" class="state-box state-warning"><strong>正在显示缓存数据</strong><span>官网暂时不可用，请留意版本信息可能不是最新。</span></div>
-    <div v-if="props.remoteLoading && !props.releases.length" class="state-box">正在解析 Snipaste 官网版本…</div>
+    <div v-if="props.remoteError" class="state-box state-error" role="alert"><span>{{ props.remoteError }}</span><button class="state-action" @click="emit('refresh-remote')">重试</button></div>
+    <div v-else-if="props.remoteLoading && !props.releases.length" class="state-box">正在解析 Snipaste 官网版本…</div>
     <div v-else-if="!props.releases.length" class="state-box state-empty"><strong>没有可用的官网版本</strong><span>官网页面结构可能已变化，可稍后重试或导入本地版本。</span></div>
     <SnipasteReleaseTable
       v-else

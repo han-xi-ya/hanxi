@@ -106,5 +106,5 @@ async function runReload(): Promise<void> {
 
 /* ---------- 提示与说明卡（hint-line/info-details/info-summary/info-body p 等由全局原子接管；
    .inline-link 两行 scoped 副本已删净，落回 components.css :where 全局原子） ---------- */
-.info-body kbd { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 0 4px; }
+.info-body kbd { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-micro); padding: 0 4px; }
 </style>
