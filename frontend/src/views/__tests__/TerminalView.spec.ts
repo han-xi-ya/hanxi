@@ -2,7 +2,8 @@
 // 后端契约事实（主会话按此实现）钉在本测试里的部分：
 //  - RPC（terminalservice 函数式导出）：OpenTerminal(profileId, cols, rows)→TermSessionRow、
 //    ListTerminals()、RenameTerminal(id,title)、KillTerminal(id)（杀会话并除账）；
-//    profile 固定三档 cmd/powershell/claude（展示名 命令行/PowerShell/Claude Code）。
+//    profile 固定四档 cmd/powershell/claude/omp（展示名 命令行/PowerShell/Claude Code/Oh My Pi）；
+//    入口**平铺直开**（2026-11-12 机主要求，原下拉退役）：一次点击即起会话，逐档 📁 副钮先选目录。
 //  - 字节通道：Stream("terminal:io")，每终端页一条连接；**首字节标签 0x00=JSON 控制帧、
 //    0x01=原始终端字节**。连接建立（onopen）后客户端先发 {"op":"open","sessionId"}；
 //    服务端回 {"op":"ready"} 后 pty 输出以 0x01 帧推送；子进程退出推 {"op":"exit","code":N}；
@@ -271,11 +272,6 @@ async function mountLive(rows: ReturnType<typeof makeWireRow>[]) {
   return w
 }
 
-async function openMenu(w: VueWrapper) {
-  await w.find('.tc-create').trigger('click')
-  await nextTick()
-}
-
 beforeEach(() => {
   seq = 0
   h.sockets.length = 0
@@ -488,21 +484,22 @@ describe('TerminalView 通道握手、重连与 v0 进程语义', () => {
 })
 
 describe('TerminalView 名录三通道与入口', () => {
-  it('新建下拉三档固定（命令行/PowerShell/Claude Code），逐档 OpenTerminal(profileId, cols, rows) 且建号会话 ready 后不再补发尺寸帧', async () => {
+  it('新建入口平铺四档常显（命令行/PowerShell/Claude Code/Oh My Pi），点一下即 OpenTerminal(profileId, cols, rows) 且 ready 后不再补发尺寸帧', async () => {
     const w = await mountView([])
     const expected: Array<[number, string, string]> = [
       [0, 'cmd', '命令行'],
       [1, 'powershell', 'PowerShell'],
       [2, 'claude', 'Claude Code'],
+      [3, 'omp', 'Oh My Pi'],
     ]
+    // 平铺语义：不点任何"新建"就已经看得见四档 + 四枚目录副钮，无展开步骤
+    expect(w.findAll('.tc-open').map((n) => n.text())).toEqual(expected.map(([, , label]) => label))
+    expect(w.findAll('.tc-open-dir')).toHaveLength(4)
     for (const [idx, id, label] of expected) {
       svc.OpenTerminal.mockImplementationOnce((profileId: string) => Promise.resolve(
         makeWireRow({ id: `p${id}`, profileId, title: label }),
       ))
-      await openMenu(w)
-      const items = w.findAll('.tc-menu-item')
-      expect(items.map((n) => n.text())).toEqual(['命令行', 'PowerShell', 'Claude Code'])
-      await items[idx].trigger('click')
+      await w.findAll('.tc-open')[idx].trigger('click')
       await flushMicrotasks()
       // 直开档第 4 参=空目录（继承 hanxi cwd，后端如实不造字段假象）
       expect(svc.OpenTerminal).toHaveBeenLastCalledWith(id, 80, 24, '')
@@ -513,58 +510,63 @@ describe('TerminalView 名录三通道与入口', () => {
       // 建号已把尺寸交给后端（RPC 参数），ready 对账无欠账 → 通道里只有 open 帧
       expect(sentFrames(lastSocket())).toHaveLength(1)
     }
-    expect(svc.OpenTerminal).toHaveBeenCalledTimes(3)
-    expect(w.findAll('.tc-title').map((n) => n.text())).toEqual(['命令行', 'PowerShell', 'Claude Code'])
+    expect(svc.OpenTerminal).toHaveBeenCalledTimes(4)
+    expect(w.findAll('.tc-title').map((n) => n.text())).toEqual(expected.map(([, , label]) => label))
   })
 
-  it('📁 选目录流：PickDirectory 返回路径→OpenTerminal 带该 dir；取消(空串)静默不建；选择器抛→只砸 openError 不建号', async () => {
+  it('📁 选目录流（含新 omp 档）：PickDirectory 返回路径→OpenTerminal 带该 dir；取消(空串)静默不建；选择器抛→只砸 openError 不建号', async () => {
     const w = await mountView([])
-    // 选到一个真目录
+    // 选到一个真目录（claude 档）
     svc.PickDirectory.mockResolvedValueOnce('E:\\proj\\demo')
     svc.OpenTerminal.mockImplementationOnce((profileId: string, _c: number, _r: number, dir: string) =>
       Promise.resolve(makeWireRow({ id: 'withdir', profileId, dir })))
-    await openMenu(w)
-    await w.findAll('.tc-menu-dir')[2].trigger('click') // claude 档的 📁
+    await w.findAll('.tc-open-dir')[2].trigger('click') // claude 档的 📁
     await flushMicrotasks()
     expect(svc.OpenTerminal).toHaveBeenLastCalledWith('claude', 80, 24, 'E:\\proj\\demo')
     expect(w.find('.tm-banner').exists()).toBe(false)
 
+    // omp 档同样支持先选目录（AI 会话的项目上下文跟着 cwd 走）
+    svc.PickDirectory.mockResolvedValueOnce('E:\\proj\\agent')
+    svc.OpenTerminal.mockImplementationOnce((profileId: string, _c: number, _r: number, dir: string) =>
+      Promise.resolve(makeWireRow({ id: 'ompdir', profileId, dir })))
+    await w.findAll('.tc-open-dir')[3].trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenTerminal).toHaveBeenLastCalledWith('omp', 80, 24, 'E:\\proj\\agent')
+
     // 取消：PickDirectory 返回空串 → 不调 OpenTerminal、不报错
     const before = svc.OpenTerminal.mock.calls.length
     svc.PickDirectory.mockResolvedValueOnce('')
-    await openMenu(w)
-    await w.findAll('.tc-menu-dir')[0].trigger('click')
+    await w.findAll('.tc-open-dir')[0].trigger('click')
     await flushMicrotasks()
     expect(svc.OpenTerminal).toHaveBeenCalledTimes(before) // 取消不是故障，静默
     expect(w.find('.tm-banner').exists()).toBe(false)
 
     // 选择器本身抛 → openError 通道、不建号
     svc.PickDirectory.mockRejectedValueOnce(new Error('无头环境不可用'))
-    await openMenu(w)
-    await w.findAll('.tc-menu-dir')[1].trigger('click')
+    await w.findAll('.tc-open-dir')[1].trigger('click')
     await flushMicrotasks()
     expect(svc.OpenTerminal).toHaveBeenCalledTimes(before)
     expect(w.find('.tm-banner').text()).toContain('打开目录选择器失败')
   })
 
-  it('目录选择待决期 picking 闸：新建钮禁用+「选目录中」，菜单开不了、不发第二发 PickDirectory', async () => {
+  it('目录选择待决期 picking 闸：四档整组禁用+「选目录中」，不发第二发 PickDirectory', async () => {
     const w = await mountView([])
     const d = deferred<string>()
     svc.PickDirectory.mockReturnValueOnce(d.promise)
-    await openMenu(w)
-    await w.findAll('.tc-menu-dir')[0].trigger('click')
+    await w.findAll('.tc-open-dir')[0].trigger('click')
     await flushMicrotasks()
     expect(svc.PickDirectory).toHaveBeenCalledTimes(1)
-    // picking 在途：新建钮禁用（trigger 对 disabled 不发事件 → 菜单开不了）
-    expect(w.find('.tc-create').attributes('disabled')).toBeDefined()
-    expect(w.find('.tc-create').text()).toContain('选目录中')
-    await openMenu(w)
-    expect(w.findAll('.tc-menu-dir')).toHaveLength(0)
+    // picking 在途：四档直开钮与四枚目录钮全禁用（trigger 对 disabled 不发事件）
+    expect(w.findAll('.tc-open').every((n) => n.attributes('disabled') !== undefined)).toBe(true)
+    expect(w.findAll('.tc-open-dir').every((n) => n.attributes('disabled') !== undefined)).toBe(true)
+    expect(w.findAll('.tc-open').every((n) => n.text().includes('选目录中'))).toBe(true)
+    await w.findAll('.tc-open-dir')[1].trigger('click')
+    await w.findAll('.tc-open')[3].trigger('click')
     expect(svc.PickDirectory).toHaveBeenCalledTimes(1) // 闸挡住第二发
     expect(svc.OpenTerminal).not.toHaveBeenCalled()
     d.resolve('') // 收尾：取消态，不建号
     await flushMicrotasks()
-    expect(w.find('.tc-create').attributes('disabled')).toBeUndefined()
+    expect(w.findAll('.tc-open').every((n) => n.attributes('disabled') === undefined)).toBe(true)
     expect(svc.OpenTerminal).not.toHaveBeenCalled()
   })
 
@@ -572,16 +574,14 @@ describe('TerminalView 名录三通道与入口', () => {
     const w = await mountView([])
     const d = deferred<ReturnType<typeof makeWireRow>>()
     svc.OpenTerminal.mockReturnValueOnce(d.promise)
-    await openMenu(w)
-    await w.findAll('.tc-menu-item')[0].trigger('click')
+    await w.findAll('.tc-open')[0].trigger('click')
     await flushMicrotasks()
     expect(svc.OpenTerminal).toHaveBeenCalledTimes(1)
-    // creating 期间新建钮禁用（trigger 对 disabled 不发事件→菜单根本开不了）；
-    // 即便绕过视图直调，composable 的 creating 闸也在（双闸，照 aiAsking 先例）
-    expect(w.find('.tc-create').attributes('disabled')).toBeDefined()
-    expect(w.find('.tc-create').text()).toContain('创建中')
-    await openMenu(w)
-    expect(w.findAll('.tc-menu-item')).toHaveLength(0)
+    // creating 期间四档全禁用（trigger 对 disabled 不发事件）；即便绕过视图直调，
+    // composable 的 creating 闸也在（双闸，照 aiAsking 先例）
+    expect(w.findAll('.tc-open').every((n) => n.attributes('disabled') !== undefined)).toBe(true)
+    expect(w.findAll('.tc-open').every((n) => n.text().includes('创建中'))).toBe(true)
+    await w.findAll('.tc-open')[1].trigger('click')
     await flushMicrotasks()
     expect(svc.OpenTerminal).toHaveBeenCalledTimes(1)
     d.resolve(makeWireRow({ id: 'cr1', title: '新开的' }))
@@ -595,8 +595,7 @@ describe('TerminalView 名录三通道与入口', () => {
     const t = term()
     socket(0).fireMessage(dataPayload('手里的输出'))
     svc.OpenTerminal.mockRejectedValueOnce(new Error('spawn 失败：找不到 powershell'))
-    await openMenu(w)
-    await w.findAll('.tc-menu-item')[1].trigger('click')
+    await w.findAll('.tc-open')[1].trigger('click')
     await flushMicrotasks()
     expect(w.find('.tm-banner').text()).toContain('新建终端失败')
     expect(w.find('.tm-banner').text()).toContain('找不到 powershell')

@@ -80,7 +80,7 @@ const overlay = computed<'loading' | 'error' | 'empty' | 'dead' | null>(() => {
 const overlayMessage = computed(() => {
   switch (overlay.value) {
     case 'loading': return '正在读取终端名录…'
-    case 'empty': return '还没有终端会话。用上方「新建」选一个 Shell——命令行 / PowerShell / Claude Code。'
+    case 'empty': return '还没有终端会话。上方「新建」四档平铺，点一下即开：命令行 / PowerShell / Claude Code / Oh My Pi；要指定工作目录就点该档右侧的 📁。'
     case 'dead': return '该会话的进程已退出，画面已随切换清空。Kill 清账，或新建同型会话。'
     default: return ''
   }

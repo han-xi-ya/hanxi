@@ -65,13 +65,23 @@ export const READY_TIMEOUT_MS = 8000
 /** 自动重连尝试上限，指数退避 1s/2s/4s/8s；用尽转「已断线」等手动重连。 */
 export const MAX_RECONNECT = 4
 
-export type TermProfileId = 'cmd' | 'powershell' | 'claude'
+export type TermProfileId = 'cmd' | 'powershell' | 'claude' | 'omp'
 
-/** 三档 profile：id 是后端契约值，label 是工作台展示名。 */
-export const TERM_PROFILES: ReadonlyArray<{ id: TermProfileId; label: string; hint: string }> = [
-  { id: 'cmd', label: '命令行', hint: 'cmd.exe' },
-  { id: 'powershell', label: 'PowerShell', hint: 'powershell.exe' },
-  { id: 'claude', label: 'Claude Code', hint: '挂 Claude Code 的会话壳' },
+/**
+ * 四档 profile：id 是后端契约值（terminal/service.go 的 v0Profiles），label 是
+ * 工作台展示名，hint 进按钮 title；tone 是入口条的**逐档色相**——四档各占一色，
+ * 扫一眼就能定位要开哪个（色相只是加成，档名恒显，不靠颜色单独表意）。
+ */
+export const TERM_PROFILES: ReadonlyArray<{
+  id: TermProfileId
+  label: string
+  hint: string
+  tone: 'shell' | 'ps' | 'claude' | 'omp'
+}> = [
+  { id: 'cmd', label: '命令行', hint: 'cmd.exe｜工作目录继承 hanxi 所在目录', tone: 'shell' },
+  { id: 'powershell', label: 'PowerShell', hint: 'powershell.exe -NoProfile｜工作目录继承 hanxi 所在目录', tone: 'ps' },
+  { id: 'claude', label: 'Claude Code', hint: '挂 Claude Code 的会话壳｜没装会在点开时如实说明', tone: 'claude' },
+  { id: 'omp', label: 'Oh My Pi', hint: '挂 omp 的会话壳（官方脚本装的单文件）｜没装会在点开时指路安装', tone: 'omp' },
 ]
 
 /** 名录行 = 后端 TermSessionRow 账本字段 + 前端本地派生位（exitCode 只在本通道见过才非空）。 */

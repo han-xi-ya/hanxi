@@ -80,7 +80,7 @@ type streamIO interface {
 	Receive() ([]byte, error)
 }
 
-// TermProfile v0 固定三档（返回前端用于入口列表）。
+// TermProfile 固定四档（返回前端用于入口列表；前端 TERM_PROFILES 是展示侧镜像）。
 type TermProfile struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -90,6 +90,7 @@ var v0Profiles = []TermProfile{
 	{ID: "cmd", Title: "命令行"},
 	{ID: "powershell", Title: "PowerShell"},
 	{ID: "claude", Title: "Claude Code"},
+	{ID: "omp", Title: "Oh My Pi"},
 }
 
 // TermSessionRow 会话账目（内存态，见头注 v0 语义）。
@@ -603,9 +604,13 @@ func readPtyChunked(p ptyLike, buf []byte, wait time.Duration) (int, error) {
 	}
 }
 
-// resolveProfile 三档 profile → 命令行。claude 档经 LookPath 解析 .cmd 绝对路径
-// 再借 cmd.exe /c 拉起（CreateProcess 只自动补 .exe，不给 .cmd——探针 run3 的
-// 实证姿势；PATH 里没有 claude 时报 aiagent 同款"未安装"人话）。
+// resolveProfile 四档 profile → 命令行。
+//   - claude 档经 LookPath 解析 .cmd 绝对路径再借 cmd.exe /c 拉起（CreateProcess
+//     只自动补 .exe，不给 .cmd——探针 run3 的实证姿势）；
+//   - omp 档是官方脚本装的**真 exe**（%LOCALAPPDATA%\omp\omp.exe，Bun 编译单文件），
+//     LookPath 命中即直起，不借 cmd.exe 转手（少一层壳，Ctrl+C 与退出码更干净）；
+//   - 两者的"没装"都报带下一步的人话，且**入口列表不因此缺项**（与 jsonfmt AI
+//     按钮同口径：可选依赖缺失在点开时说明白，不在名录里偷偷藏档）。
 func resolveProfile(id string) (command string, args []string, title string, err error) {
 	switch id {
 	case "cmd":
@@ -618,7 +623,18 @@ func resolveProfile(id string) (command string, args []string, title string, err
 			return "", nil, "", aiagent.ErrNotInstalled
 		}
 		return "cmd.exe", []string{"/c", bin}, "Claude Code", nil
+	case "omp":
+		bin, lerr := exec.LookPath("omp")
+		if lerr != nil || strings.TrimSpace(bin) == "" {
+			return "", nil, "", errOmpNotInstalled
+		}
+		return bin, nil, "Oh My Pi", nil
 	default:
 		return "", nil, "", fmt.Errorf("未知终端档 %q", id)
 	}
 }
+
+// errOmpNotInstalled omp 不在 PATH 的哨兵 + 可执行指引（上层与用例按类型判，
+// 不做字符串匹配）。安装入口本仓已托管——指到「开发环境检测 → Oh My Pi 官方
+// 安装」，别让用户猜装哪儿。
+var errOmpNotInstalled = errors.New("本机未找到 Oh My Pi 命令行（omp）：可在「开发环境检测 → Oh My Pi 官方安装」一键安装，装好后重开本页")

@@ -472,6 +472,51 @@ func TestResolveProfileStatic(t *testing.T) {
 	}
 }
 
+// TestResolveProfileOmp omp 档（2026-11-12 新增）：官方脚本装的是**真 exe**，
+// LookPath 命中即直起、不借 cmd.exe 转手；没装则报本模块哨兵（不是 claude 那个，
+// 否则前端会把"去装 omp"引导成"去装 Claude Code"）。
+func TestResolveProfileOmp(t *testing.T) {
+	c, a, title, err := resolveProfile("omp")
+	if err != nil {
+		if !errors.Is(err, errOmpNotInstalled) {
+			t.Fatalf("未装 omp 必须报 errOmpNotInstalled 哨兵，得: %v", err)
+		}
+		if errors.Is(err, aiagent.ErrNotInstalled) {
+			t.Fatal("omp 缺席不得复用 claude 的未安装哨兵（指路会指错工具）")
+		}
+		if !strings.Contains(err.Error(), "开发环境检测") {
+			t.Errorf("未装文案须指到本仓已有的安装入口，得: %v", err)
+		}
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(c), "omp.exe") && !strings.HasSuffix(strings.ToLower(c), "omp") {
+		t.Fatalf("omp 档应直起 omp 可执行文件，得: %s", c)
+	}
+	if len(a) != 0 {
+		t.Fatalf("omp 档不带参数（不经 cmd.exe /c 转手），得: %v", a)
+	}
+	if title != "Oh My Pi" {
+		t.Errorf("会话标题 = %q, want Oh My Pi", title)
+	}
+}
+
+// TestProfilesIncludeOmp 名录必须含 omp 档且顺序稳定（前端入口条按此顺序平铺）。
+func TestProfilesIncludeOmp(t *testing.T) {
+	svc := NewService(extapi.NewLeaseHolder(ID))
+	list, err := svc.Profiles()
+	if err != nil {
+		t.Fatalf("Profiles: %v", err)
+	}
+	got := make([]string, 0, len(list))
+	for _, p := range list {
+		got = append(got, p.ID)
+	}
+	want := []string{"cmd", "powershell", "claude", "omp"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("名录 = %v, want %v", got, want)
+	}
+}
+
 // ---- 工作目录（v0.x 增量）----
 
 // TestOpenTerminalDirValidation 钉三格：坏目录源头拒、好目录透传进
