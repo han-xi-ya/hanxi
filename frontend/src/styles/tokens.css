@@ -120,6 +120,17 @@
   --overlay-mask: rgba(10, 24, 29, 0.46);
   --focus-ring: rgba(13, 130, 132, 0.8);
 
+  /* 全局 toast 深底浮层（App.vue .global-toast）：刻意深底，两主题同值亦显式成对入册
+   * （裸色只许进本文件硬约束）；白字于深底对比 ≥12:1。色板中性项，跨色板恒定不覆写。 */
+  --surface-toast: rgba(31, 35, 40, 0.92);
+  --color-on-toast: #ffffff;
+
+  /* 滚动条皮肤（base.css 全局消费）：结构派生值，随主题/色板自动联动，
+   * 不入色板覆写集（同 --surface-disabled / --terminal-* 纪律，覆写块不得搬运为裸色）。
+   * 轨道透明、滑块取边框档、hover 提深一档——细边框先立层级，不加彩色发光。 */
+  --scrollbar-thumb: var(--color-border-strong);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-text) 32%, var(--color-border-strong));
+
   /* 字体栈：唯一定义在 fonts.css——--font-ui/--font-mono 字面栈与
      --font-text/--font-display 委托桥皆出自该文件（晚于本文件导入）；
      本文件不得再回写任何字族字面。public/style.css 自带旧名 --font-family，不依赖此处。 */
@@ -172,11 +183,14 @@
      --z-dialog-under/--z-dialog 数值互锁，动任何一档两侧必须同改。
      组件内部局部小值叠放不入册。 */
   --z-flyout: 900;              /* 侧栏二级 flyout / 行操作浮出菜单（同 WslDistroTable 档） */
+  --z-flyout-under: 899;        /* 侧栏 flyout 透明收回遮罩：必须低于面板（--z-flyout），否则盖住面板点不动 */
+  --z-rail-drawer: 1000;        /* ≤760px rail overlay 抽屉本体（与 App 单例对话框同档，窄屏抽屉为页内最高浮层） */
+  --z-rail-under: 999;          /* rail 抽屉遮罩与 ☰ 把手：低于抽屉本体 */
   --z-dialog-under: 950;        /* 视图级对话框（DIALOG_Z.underTop）：叠在 App 单例对话框之下 */
   --z-dialog: 1000;             /* App 单例对话框族（ConfirmDialog、UiPromptDialog，Teleport 到 body） */
-  --z-snackbar: 9999;           /* App.vue 全局 toast（右下位）：受通知抽屉压制，为既定关系 */
-  --z-drawer: 10001;            /* 通知抽屉背板 */
-  --z-drawer-panel: 10002;      /* 通知抽屉本体 */
+  --z-snackbar: 9999;           /* App.vue 全局 toast（右下位）：高于通知抽屉，抽屉打开时错误回执仍可见 */
+  --z-drawer: 940;              /* 通知抽屉背板：低于视图级对话框(950)与 App 单例(1000)，模态确认浮于抽屉之上才可点 */
+  --z-drawer-panel: 945;        /* 通知抽屉本体：高于自身背板、低于一切对话框档 */
   --z-board-fullscreen: 99998;  /* 留言板全屏浮层 */
   --z-palette: 100000;          /* 命令面板：高于抽屉、低于 Toast */
   --z-toast: 999999;            /* 通知 toast 栈：全库最高层 */
@@ -270,6 +284,10 @@
 
   --overlay-mask: rgba(2, 8, 11, 0.62);
   --focus-ring: rgba(66, 183, 180, 0.65); /* 深底焦点环合成 ≥3:1 */
+
+  /* 滚动条深侧镜像：滑块向 white 提亮，深底可辨且不刺眼（派生纪律同浅侧） */
+  --scrollbar-thumb: color-mix(in srgb, var(--color-border-strong) 70%, white);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-border-strong) 45%, white);
 
   /* --btn-* 家族深侧镜像：浅侧五枚朝 black 压档在本块反转为向 white 的同参提亮
    * 镜像（78/62/78/90/88%），深色实底形制 = 实底 + 1px 提亮描边、彩色投影只留脉冲。

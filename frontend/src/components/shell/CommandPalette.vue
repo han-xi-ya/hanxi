@@ -229,9 +229,14 @@ function onGlobalKeydown(e: KeyboardEvent) {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     activate(selectedIdx.value)
-  } else if (/^[1-9]$/.test(e.key) && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+  } else if (/^[1-9]$/.test(e.key) && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !query.value.trim()) {
+    // 数字快捷启动仅在浏览态（查询为空）生效：输入 "win10"/"ipv4" 等含数字的查询时放行字符，不劫持跳转
     e.preventDefault()
     activate(Number(e.key) - 1)
+  } else if (e.key === 'Tab') {
+    // 模态困窗：面板内唯一可聚焦元素是搜索框（结果项为 div，由 ↑↓ 驱动），Tab 恒回搜索框，不逸出到背后页面
+    e.preventDefault()
+    inputEl.value?.focus()
   }
 }
 
@@ -371,13 +376,18 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   flex: 1;
   min-width: 0;
   border: none;
-  outline: none;
   background: transparent;
   color: var(--color-text);
   font-family: inherit;
   font-size: var(--text-md);
   font-weight: 600;
   caret-color: var(--color-primary);
+}
+/* 键盘焦点环走全局 --focus-ring 契约（禁 outline:none 抹焦点）；圆角内收防裁切 */
+.p-input input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-micro);
 }
 .p-input input::placeholder {
   color: var(--color-text-subtle);
@@ -416,7 +426,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   width: 26px;
   height: 26px;
   flex: none;
-  border-radius: 7px;
+  border-radius: var(--radius-chip);
   background: var(--surface-selected);
   color: var(--color-primary);
   display: flex;
@@ -475,7 +485,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   color: var(--color-text-muted);
   border: 1px solid var(--color-border-strong);
   border-bottom-width: 2px;
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   padding: 1px 5px;
   background: var(--surface-panel);
 }

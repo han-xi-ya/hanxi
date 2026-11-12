@@ -60,3 +60,32 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 全局滚动条皮肤：细轨 + 圆角滑块，色取 --scrollbar-* 派生档（tokens.css，随主题/色板联动）。
+ * 只改外观不改占位：宽度 10px 与经典滚动条同档，App.vue .content-area 的
+ * scrollbar-gutter:stable 防横抖逻辑不受影响。视图局部 scrollbar-width:none/thin
+ * （窄轨/横滑条）为有意方言，特异性更高自然压过本兜底。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

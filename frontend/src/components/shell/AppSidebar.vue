@@ -714,7 +714,7 @@ function iconText(icon: string | undefined): string {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-flyout-under);
     background: transparent;
   }
 }
@@ -730,7 +730,7 @@ function iconText(icon: string | undefined): string {
     position: fixed;
     top: 10px;
     left: 10px;
-    z-index: 999;
+    z-index: var(--z-rail-under);
     width: 36px;
     height: 36px;
     display: flex;
@@ -755,7 +755,7 @@ function iconText(icon: string | undefined): string {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: var(--z-rail-under);
     background: var(--overlay-mask);
   }
 
@@ -766,7 +766,7 @@ function iconText(icon: string | undefined): string {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 1000;
+    z-index: var(--z-rail-drawer);
     transform: translateX(-100%);
     transition: transform var(--motion-base) ease;
     box-shadow: var(--shadow-panel);

@@ -40,7 +40,7 @@ useDialogA11y({
 <template>
   <Teleport to="body">
     <div v-if="open" class="workbench-confirm-backdrop" @mousedown.self="cancel">
-      <section ref="dialog" class="workbench-confirm" :class="`is-${tone}`" role="alertdialog" aria-modal="true" aria-labelledby="hx-confirm-title">
+      <section ref="dialog" class="workbench-confirm" :class="`is-${tone}`" role="alertdialog" aria-modal="true" aria-labelledby="hx-confirm-title" :aria-busy="busy">
         <header>
           <span class="workbench-confirm-mark" aria-hidden="true">!</span>
           <div><h2 id="hx-confirm-title">{{ title }}</h2><p>{{ description }}</p></div>
@@ -69,12 +69,11 @@ useDialogA11y({
 .workbench-confirm-details div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:10px; padding:4px 0; }
 dt { color:var(--color-text-muted); font-size:var(--text-sm); } dd { margin:0; overflow-wrap:anywhere; font:var(--text-sm)/1.5 var(--font-mono); }
 footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
-.workbench-confirm-btn { min-height:var(--control-h-lg); padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
+.workbench-confirm-btn { min-height:var(--control-h-lg); padding:0 16px; border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
 .workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
-/* primary 档底色/前景/hover/按压全部交全局 .btn-primary（勿再手抄副本）；本 scoped 块
- * 保留的是尺寸、局部描边色与字重差，以及危险态覆写（危险态 hover 有反馈）。
- * 注意：上方 .workbench-confirm-btn 的 border 取 --color-border（局部值，
- * 弱于全局 .btn-secondary 的 --btn-outline-edge），对齐全局形制前须先确认视觉差。 */
+/* primary/secondary 档底色/前景/描边/hover/按压全部交全局 .btn-primary/.btn-secondary
+ *（描边取 --btn-primary-edge/--btn-outline-edge，白底可辨）；本 scoped 块只留尺寸与字重差，
+ * 以及危险态覆写（危险态 hover 有反馈）。原局部 --color-border 弱边（1.27:1）已删净落回。 */
 .is-danger .workbench-confirm-btn.primary { background:var(--state-danger); color:var(--color-on-accent); }
 .is-danger .workbench-confirm-btn.primary:hover:not(:disabled) { background:var(--btn-danger-fill-hover); }
 /* 禁用口径与 components.css :where(.btn:disabled) 同源：grayscale 先去饱和、
@@ -82,6 +81,9 @@ footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
  *（实测跌到 2.04:1，灰成一片不可读）。 */
 .workbench-confirm-btn:disabled { opacity:.75; filter:grayscale(1); cursor:not-allowed; }
 .workbench-confirm-btn:focus-visible { outline:3px solid var(--focus-ring); outline-offset:2px; }
+/* busy 文案「确认」→「处理中…」变宽会令 footer 横跳：primary 钮锁最小宽度（按最长文案），
+ * 宽度稳定不抖；aria-busy 已挂 section，读屏可知在处理。 */
+.workbench-confirm-btn.primary { min-width: 96px; }
 @media (max-width:460px) { .workbench-confirm-backdrop{align-items:end;padding:12px}.workbench-confirm{padding:16px}.workbench-confirm footer{flex-direction:column-reverse}.workbench-confirm-btn{min-height:44px;width:100%}.workbench-confirm-details div{grid-template-columns:1fr}.workbench-confirm-details dt{margin-bottom:2px} }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important} }
 </style>

@@ -19,7 +19,7 @@ import { useToast } from './composables/useToast'
 import { useWailsEvent } from './composables/useWailsEvent'
 import { getErrorMessage } from './utils/errors'
 
-const { toastMsg, showToast } = useToast()
+const { toastMsg, showErrorToast } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
@@ -60,7 +60,7 @@ async function navigateTo(route: string) {
       await EnsureModuleActive(modID)
     } catch (err: unknown) {
       if (requestID === navigationRequestID) {
-        showToast(`模块初始化失败: ${getErrorMessage(err)}`)
+        showErrorToast(`模块初始化失败: ${getErrorMessage(err)}`)
       }
       return
     }
@@ -147,7 +147,7 @@ onMounted(async () => {
       <!-- 统一通知抽屉 Drawer -->
       <NotificationDrawer @navigate="navigateTo" />
 
-      <div v-if="toastMsg" class="global-toast">{{ toastMsg }}</div>
+      <div v-if="toastMsg" class="global-toast" role="status">{{ toastMsg }}</div>
       <ErrorBoundary :reset-key="activeRoute">
         <Transition name="page-fade" mode="out-in">
           <KeepAlive :max="10">
@@ -221,16 +221,16 @@ onMounted(async () => {
    允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互。
    锚位在右下：右上是通知浮层栈（NotificationToast .toast-stack）的专属领地，
    两族同角必叠，右下位与通知栈在任意视口宽垂直分离。
-   既知关系：通知抽屉遮罩（10001）打开时本条在遮罩之下（--z-snackbar 9999 < 抽屉档，
-   登记于 tokens.css 层序册，属既定关系非此处解）。 */
+   既知关系：通知抽屉已降入对话框下档（--z-drawer 940 / panel 945），本条 --z-snackbar 9999
+   浮于抽屉之上——抽屉打开时错误回执仍可见（层序册登记，模态确认须浮于抽屉才可点）。 */
 .global-toast {
   position: fixed;
   bottom: 20px;
   right: 24px;
   max-width: min(480px, calc(100vw - 48px));
-  background: rgba(31, 35, 40, 0.92);
+  background: var(--surface-toast);
   backdrop-filter: blur(8px);
-  color: #ffffff;
+  color: var(--color-on-toast);
   padding: 8px 16px;
   border-radius: var(--radius-control);
   font-size: var(--text-base);

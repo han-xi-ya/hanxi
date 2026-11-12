@@ -120,6 +120,23 @@ describe('CommandPalette', () => {
     expect(w.find('.palette-mask').exists()).toBe(false)
   })
 
+  it('查询非空时数字键不劫持跳转：输入含数字的查询（如 win10）数字放行，面板不关', async () => {
+    const w = factory({
+      navs: [
+        nav('/ext/win10tool', 'Win10 优化', 'i:gear', 1, 'system'),
+        nav('/ext/portscan', '端口扫描', 'i:search', 2, 'network'),
+      ],
+    })
+    await hotkey()
+    await w.find('input').setValue('win10')
+    expect(w.findAll('.p-item')).toHaveLength(1)
+    // 查询态按数字 1：旧实现会直达首项并关面板（劫持），修复后放行字符、面板保持打开
+    await pressKey({ key: '1' })
+    expect(w.emitted('navigate')).toBeUndefined()
+    expect(w.find('.palette-mask').exists()).toBe(true)
+    expect(w.find('input').element.value).toBe('win10')
+  })
+
   it('中文输入法 composing 期间不劫持 ↑↓ 与数字键', async () => {
     const w = factory()
     await hotkey()

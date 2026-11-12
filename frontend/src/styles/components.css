@@ -217,8 +217,15 @@
   /* 行内链接钮禁逐字折行，与 .btn 基座同一族规 */
   white-space: nowrap;
 }
-:where(.link-button:hover) {
+:where(.link-button:hover:not(:disabled)) {
   text-decoration: underline;
+}
+/* 可点原子禁用口径与 .btn 家族对齐（grayscale+opacity，灰掉但不消失） */
+:where(.link-button:disabled) {
+  opacity: 0.75;
+  filter: grayscale(1);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ---------- 容器 ---------- */
@@ -282,8 +289,11 @@
 :where(.dl-percent) { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 :where(.dl-meta-text) { font-size: var(--text-sm); color: var(--color-primary); }
 :where(.dl-error) { color: var(--state-danger); font-size: var(--text-xs); }
-:where(.retry-link) { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
-:where(.retry-link:hover) { text-decoration: underline; }
+/* 重试链接：消费面一律 <button>（无 href 的 <a> 不可键盘聚焦，已收编）。
+ * 基座带按钮重置，外观维持链接形；局部常下划线方言（envcheck 等）scoped 压过本档。 */
+:where(.retry-link) { appearance: none; background: none; border: none; padding: 0; font: inherit; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; text-align: left; }
+:where(.retry-link:hover:not(:disabled)) { text-decoration: underline; }
+:where(.retry-link:disabled) { opacity: 0.75; filter: grayscale(1); cursor: not-allowed; pointer-events: none; }
 :where(.installed-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 :where(.installed-card) {
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
@@ -365,7 +375,7 @@
 :where(.switch) { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 /* 数值微编辑框公共形；width 差分留各分区 scoped（见上方注记） */
 :where(.input-number) {
-  padding: 5px 8px; border: 1px solid var(--color-border);
+  padding: 5px 8px; border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: var(--text-base);
 }
 :where(.input-unit) { font-size: var(--text-sm); color: var(--color-text-muted); }
@@ -427,6 +437,12 @@
   font-weight: 600;
   /* 状态框右侧动作钮文字禁逐字折行，与 .btn 基座同一族规 */
   white-space: nowrap;
+}
+:where(.state-action:disabled) {
+  opacity: 0.75;
+  filter: grayscale(1);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ---------- 提示条 ---------- */
@@ -529,14 +545,17 @@
 :where(.text-input) {
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-chip);
   font-size: var(--text-base);
+  /* 显式面板底：缺省时深色模式落 UA 暖灰 #3b3b3b，与冷色表面族割裂（实测） */
+  background: var(--surface-panel);
+  color: var(--color-text);
 }
 :where(.select-input) {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-chip);
   font-size: var(--text-base);
   background: var(--surface-panel);
@@ -566,9 +585,15 @@
   color: var(--color-text-muted);
   cursor: pointer;
 }
-:where(.btn-quick:hover) {
+:where(.btn-quick:hover:not(:disabled)) {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+:where(.btn-quick:disabled) {
+  opacity: 0.75;
+  filter: grayscale(1);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 :where(.diag-card) {
   background: var(--surface-panel);
@@ -665,10 +690,10 @@
 :where(.custom-modal-card) {
   width: 360px;
   background: var(--surface-panel);
-  border-radius: 10px;
+  border-radius: var(--radius-element);
   box-shadow: var(--shadow-panel);
   overflow: hidden;
-  animation: modalIn 0.18s ease-out;
+  animation: modalIn var(--motion-slow) ease-out;
 }
 :where(.cmodal-header) {
   padding: 12px 16px;
@@ -691,6 +716,18 @@
   font-size: var(--text-md);
   color: var(--color-text-subtle);
   cursor: pointer;
+  /* 28px 命中区 + 圆角 hover 反馈：原裸 ✕ 无内距无 hover，点按目标过小且无反馈 */
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-chip);
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
+}
+:where(.cmodal-close:hover) {
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 :where(.cmodal-body) {
   padding: 14px 16px;
@@ -712,9 +749,12 @@
    （任何"清理"都不得删掉焦点呈现本身）；鼠标点按只吃下方换边规则。 */
 :where(.form-text-input) {
   padding: 6px 10px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-chip);
   font-size: var(--text-base);
+  /* 同 .text-input：显式面板底，防深色落 UA 暖灰 */
+  background: var(--surface-panel);
+  color: var(--color-text);
   transition: border-color var(--motion-base) ease;
 }
 :where(.form-text-input:focus) {
@@ -767,7 +807,7 @@
 :where(.tag-pill) {
   font-size: var(--text-xs);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: var(--surface-soft);
   color: var(--color-text);
 }

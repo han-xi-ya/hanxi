@@ -88,10 +88,8 @@ useDialogA11y({
 .hx-prompt-field input { min-height: var(--control-h-lg); padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background: var(--surface-soft); color: var(--color-text); font-size: var(--text-base); }
 .hx-prompt-field input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.hx-prompt-btn { min-height: var(--control-h-lg); padding: 0 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
-/* secondary/primary 两档整体交给全局 .btn-secondary / .btn-primary（原手抄副本已删净，
- * 副本曾缺 :active 按压下沉与统一禁用口径）；本件只保留上方尺寸差异。
- * 留档差：上方 scoped 的 border 取局部 --color-border（白底上约 1.27:1，弱于全局
- * --btn-outline-edge 的 ~2.5:1），字重 650——与全局描边档尚未对齐，对齐前先确认视觉差。 */
+.hx-prompt-btn { min-height: var(--control-h-lg); padding: 0 16px; border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
+/* secondary/primary 两档整体交给全局 .btn-secondary / .btn-primary（描边取 --btn-outline-edge/
+ * --btn-primary-edge，白底可辨）；本件只保留上方尺寸差异。原局部 --color-border 弱边（1.27:1）已删净落回。 */
 @media (max-width: 460px) { .hx-prompt-backdrop { align-items: end; padding: 12px } .hx-prompt { padding: 16px } .hx-prompt footer { flex-direction: column-reverse } .hx-prompt-btn { min-height: 44px; width: 100% } }
 </style>

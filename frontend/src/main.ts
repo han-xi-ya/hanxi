@@ -51,7 +51,7 @@ const app = createApp(rootComponent)
 // 不再静默 console + 白屏
 app.config.errorHandler = (err) => {
   console.error('[app] 未捕获异常:', err)
-  useToast().showToast(`运行时异常: ${getErrorMessage(err)}`)
+  useToast().showErrorToast(`运行时异常: ${getErrorMessage(err)}`)
 }
 
 app.mount('#app')

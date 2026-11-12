@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { useClipboard } from '../../composables/useClipboard'
 import { useToast } from '../../composables/useToast'
 import UiButton from './UiButton.vue'
+import AppIcon from './AppIcon.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -83,7 +84,7 @@ function onInput(e: Event) {
       <span v-else aria-hidden="true" />
       <span class="ui-clip-actions">
         <UiButton v-if="wantPaste" small :disabled="disabled" title="读取系统剪贴板文本填入" @click="pasteIn">
-          📋 从剪贴板粘贴
+          <AppIcon name="clipboard" :size="14" /> 从剪贴板粘贴
         </UiButton>
         <UiButton v-if="wantCopy" small :disabled="disabled || !modelValue" @click="copyOut">
           复制全文
@@ -116,9 +117,11 @@ function onInput(e: Event) {
   border: 1px solid var(--color-border); border-radius: var(--radius-control);
   resize: vertical; transition: border-color var(--motion-base) ease;
 }
-.ui-clip-textarea:hover { border-color: var(--color-border-strong); }
+.ui-clip-textarea:hover:not(:disabled):not([readonly]) { border-color: var(--color-border-strong); }
 .ui-clip-textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .ui-clip-textarea::placeholder { color: var(--color-text-subtle); }
 .ui-clip-textarea[readonly] { background: var(--surface-soft); color: var(--color-text-muted); }
+/* 禁用态接全局口径：换 --surface-disabled 底 + not-allowed，hover 不再提边（看起来能输入是 bug） */
+.ui-clip-textarea:disabled { background: var(--surface-disabled); cursor: not-allowed; }
 .ui-clip-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 </style>
