@@ -18,6 +18,8 @@ import { stepOf, versionRowState } from '../components/managed/managedProgress'
 import { useDoneTicketRetire } from '../components/managed/useDoneTicketRetire'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
+import UiProgressBar from '../components/ui/UiProgressBar.vue'
+import AppIcon from '../components/ui/AppIcon.vue'
 
 const releases = ref<DouzyRelease[]>([])
 const installed = ref<DouzyVersionInfo[]>([])
@@ -33,6 +35,8 @@ const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
 
 const repoUrl = ref('')
+// RepositoryURL 失败/为空的原因入 title：地址不可用时禁用复制与打开，不弹假成功回执
+const repoError = ref('')
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
@@ -55,14 +59,31 @@ function statusOf(rel: DouzyRelease): 'installed' | 'downloading' | 'error' | 'i
 }
 
 // ---------- 下载 / 安装 / 目录操作 ----------
+// 发起中集合（同 ModuleCenterView busyIds 模式）：DownloadVersion 立即返回、进度经
+// 事件推送，点击→首个事件之间按钮立即禁用防连点；pending 驻留到首个事件到达
+// 由事件处理器摘除交还 statusOf（RPC 返回 started/in-progress 不提前撤防）。
+const pendingDownloads = ref<Record<string, boolean>>({})
+
+function clearPending(version: string) {
+  if (!pendingDownloads.value[version]) return
+  const next = { ...pendingDownloads.value }
+  delete next[version]
+  pendingDownloads.value = next
+}
+
 async function download(rel: DouzyRelease) {
+  if (pendingDownloads.value[rel.version]) return
+  pendingDownloads.value = { ...pendingDownloads.value, [rel.version]: true }
   try {
     const res = await DouzyAPI.DownloadVersion(rel.version)
     if (res === 'already-installed') {
+      // 已装/失败两路不会再有事件，就地撤防；started/in-progress 等事件接管
+      clearPending(rel.version)
       showToast(`版本 ${rel.version} 的安装包已下载`)
       await loadVersions()
     }
   } catch (e) {
+    clearPending(rel.version)
     showToast(`下载失败: ${getErrorMessage(e)}`)
   }
 }
@@ -128,6 +149,7 @@ const scheduleDoneRetire = useDoneTicketRetire({ track: true })
 useWailsEvent<DownloadProgress>('douzy:version-download', (t) => {
   if (!t || !t.version) return
   downloading.value = { ...downloading.value, [t.version]: t }
+  clearPending(t.version)
   if (t.stage === 'done') {
     scheduleDoneRetire(() => {
       const next = { ...downloading.value }
@@ -142,8 +164,9 @@ onMounted(async () => {
   loadVersions()
   try {
     repoUrl.value = await DouzyAPI.RepositoryURL()
+    if (!repoUrl.value) repoError.value = '后端返回了空的仓库地址'
   } catch (e) {
-    console.warn('douzy RepositoryURL failed:', getErrorMessage(e))
+    repoError.value = getErrorMessage(e)
   }
 })
 
@@ -156,7 +179,7 @@ onMounted(async () => {
     <PageHeader title="Douzy 全能下载器" subtitle="多平台视频下载器 Douzy（抖音 / TikTok / YouTube / Telegram / X）的安装包版本管理：下载、校验与安装向导拉起（仅版本管理+下载，不接管程序运行）。" />
 
     <!-- 常驻诚实横幅：上游内测 + 边界声明 -->
-    <UiBanner tone="warn" class="dz-slim">
+    <UiBanner tone="warn" class="slim">
       桌面版 Douzy 尚处<strong>上游内测期</strong>，功能与稳定性由上游项目负责；Hanxi 只负责安装包下载与哈希校验，不接管其运行，安装后使用风险自行承担。
     </UiBanner>
 
@@ -169,7 +192,7 @@ onMounted(async () => {
       </div>
       <div class="dz-btns">
         <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
-          {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
+          <AppIcon v-if="!loading" name="refresh-cw" :size="14" />{{ loading ? '刷新中…' : '刷新远程列表' }}
         </button>
       </div>
     </div>
@@ -179,10 +202,15 @@ onMounted(async () => {
 
     <div v-if="installed.length === 0" class="empty-state first-use">
       <p>尚未下载任何安装包 —— 下载最新版后双击安装即可使用</p>
-      <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
-        下载最新版 {{ releases[0].version }}
+      <button
+        v-if="releases.length"
+        class="btn btn-primary"
+        :disabled="!!pendingDownloads[releases[0].version]"
+        @click="download(releases[0])"
+      >
+        {{ pendingDownloads[releases[0].version] ? '发起中…' : `下载最新版 ${releases[0].version}` }}
       </button>
-      <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
+      <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions"><AppIcon name="refresh-cw" :size="14" />刷新远程列表</button>
     </div>
 
     <div class="dz-grid">
@@ -199,8 +227,9 @@ onMounted(async () => {
           <!-- 有意分叉、非全站规则：这两颗留 .btn-accent-outline 青描边，不跟进全站蓝洗一档
                .btn-primary（机主裁决"Douzy 已经改好了"）。分叉账目与回退方案唯一在册处：
                docs/FRONTEND.md「按钮变体语义」条（PLAN_REMAINING_WORK.md 待决清单 ⚑1 同位引）。 -->
+          <!-- ▶ 暂留字符图标：icons.ts 注册表无 play 矢量，待主会话集中登记后替换（勿散写 svg） -->
           <button class="btn btn-accent-outline btn-small" :disabled="busy" title="拉起上游 NSIS 安装向导；UAC 与向导步骤由你完成" @click="launchInstaller(v)">▶ 运行安装程序</button>
-          <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
+          <button class="btn btn-secondary btn-small" @click="openDir(v.dir)"><AppIcon name="folder" :size="14" />打开位置</button>
           <button class="btn btn-danger-outline btn-small" @click="removeInstaller(v)">删除安装包</button>
         </div>
       </div>
@@ -237,9 +266,7 @@ onMounted(async () => {
             <td>{{ fmtDate(rel.published) }}</td>
             <td>
               <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="dz-dl-cell">
-                <div class="dz-bar-wrap">
-                  <div class="dz-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
-                </div>
+                <UiProgressBar class="dz-bar" :percent="stepOf(downloading[rel.version]!)" />
                 <span class="dz-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
               </div>
               <div v-else-if="statusOf(rel) === 'downloading'" class="dz-dl-meta">
@@ -249,13 +276,28 @@ onMounted(async () => {
                 <span class="dz-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
               <!-- 同行内降档理由见上方卡片动作行注释 -->
-              <button v-if="statusOf(rel) === 'idle'" class="btn btn-accent-outline btn-small" @click="download(rel)">下载安装包</button>
+              <button
+                v-if="statusOf(rel) === 'idle'"
+                class="btn btn-accent-outline btn-small"
+                :disabled="!!pendingDownloads[rel.version]"
+                @click="download(rel)"
+              >{{ pendingDownloads[rel.version] ? '发起中…' : '下载安装包' }}</button>
               <span v-if="statusOf(rel) === 'installed'" class="btn btn-ghost btn-small">已下载</span>
-              <a v-if="statusOf(rel) === 'error'" class="dz-retry" @click="download(rel)">重试</a>
+              <button v-if="statusOf(rel) === 'error'" type="button" class="link-button" :disabled="!!pendingDownloads[rel.version]" @click="download(rel)">{{ pendingDownloads[rel.version] ? '发起中…' : '重试' }}</button>
             </td>
           </tr>
-          <tr v-if="releases.length === 0 && !loading">
-            <td colspan="5" class="dz-empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
+          <!-- 空表三分：加载中如实说在拉取；失败透出 listError 原文+重试；无错且非加载才是真空 -->
+          <tr v-if="loading">
+            <td colspan="5" class="empty-hint">正在获取远程版本…</td>
+          </tr>
+          <tr v-else-if="releases.length === 0 && listError">
+            <td colspan="5" class="empty-hint">
+              {{ listError }}
+              <button type="button" class="link-button" @click="loadVersions">重试</button>
+            </td>
+          </tr>
+          <tr v-else-if="releases.length === 0">
+            <td colspan="5" class="empty-hint">暂无远程版本</td>
           </tr>
         </tbody>
       </table>
@@ -264,17 +306,17 @@ onMounted(async () => {
     <!-- 上游信息 -->
     <div class="dz-repo">
       <span class="k">GitHub 仓库</span>
-      <code class="mono dz-repo-addr">{{ repoUrl }}</code>
-      <button class="link-button" @click="copyRepo">复制</button>
-      <button class="link-button" @click="openRepo">浏览器打开</button>
+      <code v-if="repoUrl" class="mono dz-repo-addr">{{ repoUrl }}</code>
+      <span v-else class="dz-repo-addr dz-dim" :title="repoError || undefined">仓库地址不可用</span>
+      <button type="button" class="link-button" :disabled="!repoUrl" :title="!repoUrl ? (repoError || undefined) : undefined" @click="copyRepo">复制</button>
+      <button type="button" class="link-button" :disabled="!repoUrl" :title="!repoUrl ? (repoError || undefined) : undefined" @click="openRepo">浏览器打开</button>
     </div>
   </section>
 </template>
 
 <style scoped>
 .douzy-view { display: flex; flex-direction: column; gap: 10px; }
-/* UiBanner 紧凑变体 */
-.dz-slim { padding: 8px 12px; font-size: var(--text-sm); }
+/* 横幅紧凑档直接挂全局 .banner.slim 原子（class 透传 UiBanner 根），私有副本已删 */
 
 .dz-panel {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
@@ -286,10 +328,9 @@ onMounted(async () => {
 .dz-btns { display: flex; gap: 8px; }
 
 .dz-section h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.dz-empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: var(--text-base); background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
 
 /* ---------- 已下载卡片 ---------- */
-.dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; }
 .dz-card {
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
@@ -314,13 +355,11 @@ onMounted(async () => {
    dz- 岛其余（进度条/徽标/词表）收编共享壳的账目见 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五 */
 
 .dz-dl-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dz-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
-.dz-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
+/* 进度条换 UiProgressBar 标准形（role=progressbar + aria-valuenow 随值同步）；此处只补行内伸缩 */
+.dz-bar { flex: 1; }
 .dz-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
 .dz-dl-meta { font-size: var(--text-sm); color: var(--color-primary); }
 .dz-error { color: var(--state-danger); font-size: var(--text-xs); }
-.dz-retry { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
-.dz-retry:hover { text-decoration: underline; }
 
 /* ---------- 上游信息 ---------- */
 .dz-repo { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text-muted); flex-wrap: wrap; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; }

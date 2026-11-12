@@ -44,7 +44,8 @@ const entry = (id: string, name: string, extra: Record<string, unknown> = {}) =>
 async function mountView(entries: unknown[]) {
   svc.ListEntries.mockResolvedValue(entries)
   svc.SetEntryDefaultOpen.mockResolvedValue(undefined)
-  const wrapper = mount(WebAppView)
+  // attachTo：焦点转移断言需真实挂入 document（happy-dom focus 要求节点在树内）
+  const wrapper = mount(WebAppView, { attachTo: document.body })
   await flushPromises()
   return wrapper
 }
@@ -69,6 +70,7 @@ const segs = (wrapper: ReturnType<typeof mount>) => wrapper.findAll('.webapp-seg
 afterEach(() => {
   vi.clearAllMocks()
   useToast().clearToast()
+  document.body.innerHTML = ''
 })
 
 describe('WebAppView 默认打开方式表单段', () => {
@@ -119,6 +121,43 @@ describe('WebAppView 默认打开方式表单段', () => {
     await flushPromises()
     expect(svc.SaveEntry).toHaveBeenCalledWith('e2', '二号', 'https://e2.example.com', '')
     expect(svc.SetEntryDefaultOpen).toHaveBeenCalledWith('e2', 'browser')
+    wrapper.unmount()
+  })
+
+  it('radiogroup roving tabindex：选中档 0、其余 -1，随选中迁移', async () => {
+    const wrapper = await mountViewReady()
+    await openCreateForm(wrapper)
+    expect(segs(wrapper)[0].attributes('tabindex')).toBe('0')
+    expect(segs(wrapper)[1].attributes('tabindex')).toBe('-1')
+    await segs(wrapper)[1].trigger('click')
+    expect(segs(wrapper)[0].attributes('tabindex')).toBe('-1')
+    expect(segs(wrapper)[1].attributes('tabindex')).toBe('0')
+    wrapper.unmount()
+  })
+
+  it('radiogroup 方向键环游：ArrowRight/Left 切换选中并转移焦点', async () => {
+    const wrapper = await mountViewReady()
+    await openCreateForm(wrapper)
+    ;(segs(wrapper)[0].element as HTMLElement).focus()
+    await wrapper.find('.webapp-seg').trigger('keydown', { key: 'ArrowRight' })
+    expect(segs(wrapper)[1].attributes('aria-checked')).toBe('true')
+    expect(document.activeElement).toBe(segs(wrapper)[1].element)
+    await wrapper.find('.webapp-seg').trigger('keydown', { key: 'ArrowLeft' })
+    expect(segs(wrapper)[0].attributes('aria-checked')).toBe('true')
+    expect(document.activeElement).toBe(segs(wrapper)[0].element)
+    wrapper.unmount()
+  })
+
+  it('展开表单即定位：新增/编辑后焦点落名称输入框（长列表底部编辑不再失联）', async () => {
+    const wrapper = await mountViewReady([entry('e2', '二号')])
+    await wrapper.find('button[aria-label="编辑"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.find('.webapp-name-input').element)
+    // 关闭后经页头「新增网址」再展开，焦点同样落名称输入框
+    await wrapper.find('button.btn-ghost').trigger('click') // 取消
+    await openCreateForm(wrapper)
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.find('.webapp-name-input').element)
     wrapper.unmount()
   })
 })

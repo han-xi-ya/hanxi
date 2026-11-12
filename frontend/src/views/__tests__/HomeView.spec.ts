@@ -189,7 +189,7 @@ describe('HomeView（工作台首页）', () => {
     w.unmount()
   })
 
-  it('运行行直达：建档模块走首选路由，未知模块（回落 /）不发假跳转', async () => {
+  it('运行行直达：建档模块走首选路由，未建档模块回落 /ext/<id>（与模块中心同口径）', async () => {
     stubCore(
       [mod('memo', '随手记', { initialized: true }), mod('latermod', '后加模块', { initialized: true })],
       [nav('memo', '/ext/memo', '随手记')]
@@ -199,9 +199,10 @@ describe('HomeView（工作台首页）', () => {
     const home = w.findComponent(HomeView)
     await w.findAll('.running-row:not(.update-row)')[0].trigger('click')
     expect(home.emitted('navigate')?.[0]).toEqual(['/ext/memo'])
-    // latermod 未建档且不在 navs：route 回落 '/'，被守卫拦下，不追加 emit
+    // latermod 未建档：与模块中心 openModule / OperationBanner 同口径回落 /ext/<id>，
+    // 不再静默 no-op（navs 在册时 App.vue 渲染占位视图兜底）
     await w.findAll('.running-row:not(.update-row)')[1].trigger('click')
-    expect(home.emitted('navigate')).toHaveLength(1)
+    expect(home.emitted('navigate')?.[1]).toEqual(['/ext/latermod'])
     w.unmount()
   })
 
@@ -257,6 +258,8 @@ describe('HomeView（工作台首页）', () => {
     const rows = w.findAll('.task-row')
     expect(rows).toHaveLength(3)
     expect(rows.map((r) => r.find('.task-title').text())).toEqual(['识别 c.png', '查杀 8080', '识别 a.png'])
+    // 历史行副文案走模块名（moduleNameOf），不泄漏桶键原文；未命中模块回落原键
+    expect(rows.map((r) => r.find('.task-meta').text())).toEqual(['ocr', 'portkill', 'ocr'])
     expect(rows[0].find('svg.app-icon').exists()).toBe(true)
     expect(rows[0].find('time.task-time').text()).not.toBe('')
     w.unmount()
@@ -449,6 +452,61 @@ describe('HomeView（工作台首页）', () => {
     expect(useToast().toastMsg.value).toContain('后端未就绪')
     expect(w.find('.wb-state.error').exists()).toBe(true)
     expect(w.find('.wb-state.error').text()).toContain('后端未就绪')
+    w.unmount()
+  })
+
+  it('摘要值位门禁：loadCore 失败显 — + 数据不可用副文案，不以 0 冒充权威计数', async () => {
+    appSvc.ListModules.mockRejectedValue(new Error('后端未就绪'))
+    appSvc.GetNavs.mockRejectedValue(new Error('后端未就绪'))
+    appSvc.GetAppInfo.mockRejectedValue(new Error('后端未就绪'))
+    appSvc.ListCatalog.mockResolvedValue([])
+    appSvc.ListModuleStates.mockResolvedValue([])
+    stubTasks('fail')
+    const w = await mountView()
+    // 三项核心计数失败均显 —（非权威 0），title 与副文案「数据不可用」口径一致
+    const values = w.findAll('.summary-value')
+    expect(values.slice(0, 3).map((v) => v.text())).toEqual(['—', '—', '—'])
+    expect(values[0].attributes('title')).toBe('数据不可用')
+    expect(w.findAll('.summary-note')).toHaveLength(3)
+    expect(w.findAll('.summary-note')[0].text()).toBe('数据不可用')
+    // 第四卡来自 useModuleCatalog 独立投影（成功），保持真实计数不挂错误口径
+    expect(values[3].text()).toBe('0')
+    expect(values[3].attributes('title')).toBeUndefined()
+    w.unmount()
+  })
+
+  it('摘要值位门禁：首拉在途显 —（骨架占位），完成后落真实计数', async () => {
+    const core = Promise.withResolvers<unknown[]>()
+    const catalog = Promise.withResolvers<unknown[]>()
+    appSvc.ListModules.mockReturnValue(core.promise)
+    appSvc.GetNavs.mockResolvedValue([])
+    appSvc.GetAppInfo.mockResolvedValue({ version: '0.3.0', name: 'Hanxi' })
+    appSvc.ListOperations.mockResolvedValue([])
+    appSvc.ListCatalog.mockReturnValue(catalog.promise) // 目录独立投影同样在途
+    appSvc.ListModuleStates.mockResolvedValue([])
+    stubTasks('fail')
+    const w = await mountView()
+    // 两源均未收口：四项全显 —，在途无错误副文案
+    expect(w.findAll('.summary-value').map((v) => v.text())).toEqual(['—', '—', '—', '—'])
+    expect(w.findAll('.summary-note')).toHaveLength(0)
+    catalog.resolve([])
+    core.resolve([mod('memo', '随手记', { initialized: true })])
+    await flushPromises()
+    expect(w.findAll('.summary-value').map((v) => v.text())).toEqual(['1', '1', '1', '0'])
+    w.unmount()
+  })
+
+  it('摘要值位门禁：目录投影失败只影响更新卡（— + 数据不可用），核心三卡保持真实计数', async () => {
+    stubCore([mod('memo', '随手记', { initialized: true })], [nav('memo', '/ext/memo', '随手记')])
+    appSvc.ListCatalog.mockRejectedValue(new Error('目录服务未装配'))
+    appSvc.ListModuleStates.mockResolvedValue([])
+    stubTasks('fail')
+    const w = await mountView()
+    const values = w.findAll('.summary-value')
+    expect(values.slice(0, 3).map((v) => v.text())).toEqual(['1', '1', '1'])
+    expect(values[3].text()).toBe('—')
+    expect(values[3].attributes('title')).toBe('数据不可用')
+    expect(w.findAll('.summary-note')).toHaveLength(1)
     w.unmount()
   })
 })

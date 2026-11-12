@@ -267,6 +267,17 @@ describe('ModuleCenterView', () => {
     w.unmount()
   })
 
+  it('主操作 open：未建档模块回落 /ext/<id>（与 OperationBanner 同口径，不静默弹回首页）', async () => {
+    // latermod 不在 MODULE_PRESENTATION：open 与 banner routeOf 同一口径回落 /ext/<id>
+    appSvc.ListCatalog.mockResolvedValue([cat('latermod')])
+    appSvc.ListModuleStates.mockResolvedValue([st('latermod')])
+    const w = mount(view, { attachTo: document.body })
+    await flushPromises()
+    await primaryBtnOf(w, 'latermod')!.trigger('click')
+    expect(w.emitted('navigate')?.[0]).toEqual(['/ext/latermod'])
+    w.unmount()
+  })
+
   it('retry 主操作＝重新打开：与 open 同通道上抛 navigate（懒激活重跑 OnInit 即真重试）', async () => {
     // failed 滞留（runtime=failed/summary=faulted）投影给 retry：点击后必须路由
     // openModule 通道，不落"后续版本开放"死路兜底

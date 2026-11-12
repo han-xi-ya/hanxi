@@ -4,6 +4,7 @@ import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { AppInfo } from '../../bindings/hanxi/internal/app'
 import type { ModuleInfo } from '../../bindings/hanxi/internal/extapi/models'
 import { getErrorMessage } from '../utils/errors'
+import UiButton from '../components/ui/UiButton.vue'
 // OFL「随副本分发」义务 App 内侧（与 vite.config 的 dist 静态拷贝双保险）：
 // ?raw 把许可全文内联进构建产物，EXE 内可查全文；纯静态内容，不依赖绑定就绪。
 import oflLXGW from '../assets/fonts/licenses/OFL-LXGW-WenKai.txt?raw'
@@ -21,7 +22,9 @@ const modules = ref<ModuleInfo[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  loadError.value = ''
   try {
     const [appInfo, moduleList] = await Promise.all([
       AppAPI.AppService.GetAppInfo(),
@@ -35,11 +38,13 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
 </script>
 
 <template>
-  <section class="page about-page">
+  <section class="page">
     <header class="about-header">
       <div class="product-mark" aria-hidden="true">HX</div>
       <div>
@@ -52,7 +57,10 @@ onMounted(async () => {
     </header>
 
     <div v-if="loading" class="state-panel">正在加载产品信息…</div>
-    <div v-else-if="loadError" class="state-panel error-panel">加载产品信息失败：{{ loadError }}</div>
+    <div v-else-if="loadError" class="state-panel error-panel">
+      <span>加载产品信息失败：{{ loadError }}</span>
+      <UiButton small @click="load">重试</UiButton>
+    </div>
 
     <template v-else>
       <section v-if="info" class="info-panel" aria-label="运行信息">
@@ -117,10 +125,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.about-page {
-  max-width: 920px;
-}
-
 .about-header {
   display: flex;
   align-items: center;
@@ -135,7 +139,7 @@ onMounted(async () => {
   place-items: center;
   flex: 0 0 52px;
   border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
-  border-radius: 14px;
+  border-radius: var(--radius-element);
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-size: var(--text-lg);
@@ -170,7 +174,7 @@ h1 {
 .modules-panel,
 .state-panel {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-element);
   background: var(--surface-panel);
 }
 
@@ -237,7 +241,7 @@ h1 {
 .module-count,
 .status-badge {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: var(--text-xs);
   font-weight: 650;
 }
@@ -250,7 +254,7 @@ h1 {
 
 .module-list {
   border: 1px solid var(--color-border);
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -336,6 +340,11 @@ h1 {
 
 .error-panel {
   color: var(--state-danger);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 720px) {

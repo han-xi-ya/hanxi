@@ -140,7 +140,9 @@ async function confirmUninstall(entry: ModuleEntry): Promise<boolean> {
 }
 
 function openModule(entry: ModuleEntry) {
-  emit('navigate', MODULE_PRESENTATION[entry.catalog.id]?.route || '/')
+  // 与 OperationBanner.routeOf 同口径：建档优先，未建档回落 /ext/<id>
+  //（App.vue 对 navs 在册路由渲染占位视图），不再静默弹回首页。
+  emit('navigate', MODULE_PRESENTATION[entry.catalog.id]?.route || `/ext/${entry.catalog.id}`)
 }
 
 /** 主操作分发：只按 state.primaryAction 语义路由到后端事务，零状态推断。 */

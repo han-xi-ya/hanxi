@@ -5,7 +5,7 @@
 // 设计语言：hanxi-workbench-ui——表面四层 + 全局 :where 原子（.page/.card/
 // .btn/.chip/.state-box）复用，自定义类一律 webapp- 前缀 scoped；
 // 徽标不靠颜色单传：色 + 文字 + 形状（圆点）三通道齐备。
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import type { WebAppEntryView } from '../../bindings/hanxi/internal/modules/webapp/models'
 import { NAME_MAX, entryDefaultOpen, useWebApp } from '../composables/useWebApp'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -37,6 +37,17 @@ const {
 
 // —— 纯 UI：新增/编辑共用表单面板的折叠开关 ——
 const showForm = ref(false)
+const formEl = ref<HTMLFormElement | null>(null)
+const nameInput = ref<HTMLInputElement | null>(null)
+
+// 展开即定位：长列表底部点「编辑/新增」时表单在卡片顶部、可能在视口外，
+// nextTick 等 v-if 落地后滚到最近可见位并把焦点交给名称输入框。
+async function revealForm() {
+  await nextTick()
+  // 测试环境无滚动布局，可选调用无害（同 ClipboardOverlay 形）
+  formEl.value?.scrollIntoView?.({ block: 'nearest' })
+  nameInput.value?.focus()
+}
 
 function toggleCreate() {
   if (showForm.value && !isEditing.value) {
@@ -45,11 +56,13 @@ function toggleCreate() {
   }
   resetForm()
   showForm.value = true
+  void revealForm()
 }
 
 function beginEdit(entry: WebAppEntryView) {
   startEdit(entry)
   showForm.value = true
+  void revealForm()
 }
 
 function cancelForm() {
@@ -59,6 +72,18 @@ function cancelForm() {
 
 async function onSubmit() {
   if (await submitForm()) showForm.value = false
+}
+
+// —— 默认打开方式 radiogroup：roving tabindex（选中 0、其余 -1）+ 方向键环游 ——
+const segWindow = ref<HTMLButtonElement | null>(null)
+const segBrowser = ref<HTMLButtonElement | null>(null)
+
+function onSegKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  // 两档环游：左/右都沿 window↔browser 循环（APG radiogroup 语义）
+  formDefaultOpen.value = formDefaultOpen.value === 'window' ? 'browser' : 'window'
+  ;(formDefaultOpen.value === 'window' ? segWindow : segBrowser).value?.focus()
 }
 
 // —— 窗态徽标呈现派生（视图本地纯函数，同 getAvatarColor 就近安放纪律）——
@@ -114,7 +139,7 @@ const rows = computed(() => entries.value.map(e => ({
 
     <div class="card webapp-card">
       <!-- 新增 / 编辑共用表单（可折叠；校验错误以服务端中文为准经 toast 回显） -->
-      <form v-if="showForm" class="webapp-form" @submit.prevent="onSubmit">
+      <form v-if="showForm" ref="formEl" class="webapp-form" @submit.prevent="onSubmit">
         <div class="webapp-form-head">
           <span class="webapp-form-title">{{ isEditing ? '编辑网址' : '新增网址' }}</span>
           <span class="webapp-hint">仅支持 http / https 地址；图标可留空（未填以全局标记呈现）。</span>
@@ -123,6 +148,7 @@ const rows = computed(() => entries.value.map(e => ({
           <label class="webapp-field">
             <span class="webapp-field-label">名称</span>
             <input
+              ref="nameInput"
               v-model="formName"
               class="webapp-input webapp-name-input"
               :maxlength="NAME_MAX"
@@ -144,14 +170,18 @@ const rows = computed(() => entries.value.map(e => ({
           </label>
           <div class="webapp-field">
             <span class="webapp-field-label">默认打开方式</span>
-            <div class="webapp-seg" role="radiogroup" aria-label="默认打开方式">
+            <div class="webapp-seg" role="radiogroup" aria-label="默认打开方式" @keydown="onSegKeydown">
               <button
+                ref="segWindow"
                 type="button" class="webapp-seg-btn" :class="{ active: formDefaultOpen === 'window' }"
-                role="radio" :aria-checked="formDefaultOpen === 'window'" @click="formDefaultOpen = 'window'"
+                role="radio" :aria-checked="formDefaultOpen === 'window'" :tabindex="formDefaultOpen === 'window' ? 0 : -1"
+                @click="formDefaultOpen = 'window'"
               >独立窗口</button>
               <button
+                ref="segBrowser"
                 type="button" class="webapp-seg-btn" :class="{ active: formDefaultOpen === 'browser' }"
-                role="radio" :aria-checked="formDefaultOpen === 'browser'" @click="formDefaultOpen = 'browser'"
+                role="radio" :aria-checked="formDefaultOpen === 'browser'" :tabindex="formDefaultOpen === 'browser' ? 0 : -1"
+                @click="formDefaultOpen = 'browser'"
               >系统浏览器</button>
             </div>
           </div>

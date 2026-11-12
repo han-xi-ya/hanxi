@@ -88,8 +88,10 @@ function getModuleRoute(id: string): string {
 }
 
 function enterModule(m: ModuleInfo) {
+  // 未建档模块与模块中心 openModule / OperationBanner 同口径回落 /ext/<id>
+  //（navs 在册即占位视图兜底），不再静默 no-op；首页自身仍不跳转。
   const route = getModuleRoute(m.id)
-  if (route !== '/') emit('navigate', route)
+  emit('navigate', route !== '/' ? route : `/ext/${m.id}`)
 }
 
 // ── 核心投影：ListModules / GetNavs / GetAppInfo（ext:changed 热刷新复用同链路）──
@@ -120,7 +122,7 @@ const enabledCount = computed(() => modules.value.filter((m) => m.enabled).lengt
 // ── 可用更新：唯一口径 = useModuleCatalog（ListModuleStates）
 // 健康维度 health==='update-available' 真实投影（updatewatch 调度器写入，
 // 无真实来源时计数为 0、列表区整区隐藏，不放占位）。文案全部取自 status 词表。
-const { entries: catalogEntries } = useModuleCatalog()
+const { entries: catalogEntries, loading: catalogLoading, error: catalogError } = useModuleCatalog()
 const updateEntries = computed(() =>
   catalogEntries.value.filter((e) => String(e.state?.health ?? '') === 'update-available'),
 )
@@ -142,6 +144,25 @@ function gotoUpdate(e: ModuleEntry) {
 /** 更新行的运行/更新合并短语：直接取派生摘要键词表（SUMMARY_META），零本地推断。 */
 function updateRowSummary(e: ModuleEntry): string {
   return (SUMMARY_META as Record<string, string>)[String(e.state?.summary ?? '')] ?? '状态未知'
+}
+
+// 摘要卡值位口径：首拉在途显 —，loadCore 失败显 —（title/副文案「数据不可用」），
+// 不以 0 冒充权威计数；「可用更新」来自 useModuleCatalog 独立投影，门禁跟随
+// 其自身 loading/error（核心投影失败不影响其可信度，口径互不牵连）。
+const summaryUnavailable = computed(() => loading.value || !!loadError.value)
+function summaryText(value: number): string {
+  return summaryUnavailable.value ? '—' : String(value)
+}
+function summaryTitle(): string | undefined {
+  if (loadError.value) return '数据不可用'
+  if (loading.value) return '正在加载工作台数据…'
+  return undefined
+}
+const updateUnavailable = computed(() => catalogLoading.value || !!catalogError.value)
+function updateSummaryTitle(): string | undefined {
+  if (catalogError.value) return '数据不可用'
+  if (catalogLoading.value) return '正在加载模块目录…'
+  return undefined
 }
 
 // 页头「检查更新」：手动触发（或加入）一轮全量感知，阻塞式 RPC 不阻塞 UI——
@@ -228,7 +249,7 @@ const taskRows = computed<TaskRow[]>(() => {
     key: `h-${rec.id}`,
     iconName: taskIconName(rec),
     title: taskTitle(rec),
-    meta: rec.funcType,
+    meta: moduleNameOf(rec.funcType),
     time: rec.createdAt,
   }))
   const operationRows: TaskRow[] = recentFinished(RECENT_TASKS_MAX).map((op) => ({
@@ -315,22 +336,34 @@ onMounted(async () => {
         <div class="summary-card">
           <span class="summary-icon run"><AppIcon name="activity" :size="17" /></span>
           <span class="summary-label">正在运行</span>
-          <strong class="summary-value mono">{{ runningModules.length }}</strong>
+          <span class="summary-value-wrap">
+            <strong class="summary-value mono" :class="{ 'summary-unavailable': summaryUnavailable }" :title="summaryTitle()">{{ summaryText(runningModules.length) }}</strong>
+            <span v-if="loadError" class="summary-note">数据不可用</span>
+          </span>
         </div>
         <div class="summary-card">
           <span class="summary-icon total"><AppIcon name="grid" :size="17" /></span>
           <span class="summary-label">模块总数</span>
-          <strong class="summary-value mono">{{ modules.length }}</strong>
+          <span class="summary-value-wrap">
+            <strong class="summary-value mono" :class="{ 'summary-unavailable': summaryUnavailable }" :title="summaryTitle()">{{ summaryText(modules.length) }}</strong>
+            <span v-if="loadError" class="summary-note">数据不可用</span>
+          </span>
         </div>
         <div class="summary-card">
           <span class="summary-icon enabled"><AppIcon name="check-square" :size="17" /></span>
           <span class="summary-label">已启用</span>
-          <strong class="summary-value mono">{{ enabledCount }}</strong>
+          <span class="summary-value-wrap">
+            <strong class="summary-value mono" :class="{ 'summary-unavailable': summaryUnavailable }" :title="summaryTitle()">{{ summaryText(enabledCount) }}</strong>
+            <span v-if="loadError" class="summary-note">数据不可用</span>
+          </span>
         </div>
         <div class="summary-card">
           <span class="summary-icon update"><AppIcon :name="updateHealth.icon" :size="17" /></span>
           <span class="summary-label">可用更新</span>
-          <strong class="summary-value mono">{{ updateEntries.length }}</strong>
+          <span class="summary-value-wrap">
+            <strong class="summary-value mono" :class="{ 'summary-unavailable': updateUnavailable }" :title="updateSummaryTitle()">{{ updateUnavailable ? '—' : updateEntries.length }}</strong>
+            <span v-if="catalogError" class="summary-note">数据不可用</span>
+          </span>
         </div>
       </div>
 
@@ -583,6 +616,24 @@ onMounted(async () => {
   font-size: var(--text-2xl);
   font-weight: 700;
   line-height: 1;
+}
+
+/* 值位包裹层：错误副文案挂在数字下方，卡高随内容自然生长 */
+.summary-value-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* 数据不可用：降为弱化占位（—），不冒充权威计数 */
+.summary-value.summary-unavailable {
+  color: var(--color-text-subtle);
+}
+
+.summary-note {
+  color: var(--state-danger);
+  font-size: var(--text-xs);
 }
 
 /* ── 双列工作区：左=正在运行，右=常用入口；窄窗口单列 ── */
@@ -869,9 +920,7 @@ onMounted(async () => {
   border-bottom: 0;
 }
 
-.task-row:hover {
-  background: var(--surface-soft);
-}
+/* 最近任务行为纯展示（无点击行为）：不加 hover 变色，避免虚假可点暗示 */
 
 .task-icon {
   width: 30px;

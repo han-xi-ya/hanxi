@@ -110,6 +110,41 @@ describe('DouzyView 下载与进度事件', () => {
     wrapper.unmount()
   })
 
+  it('发起中防连点：点击即禁用+「发起中…」，首个事件到达交还 statusOf', async () => {
+    stubDefaults([relV0115])
+    svc.DownloadVersion.mockResolvedValue('started')
+    const wrapper = await mountView()
+    const dl = wrapper.findAll('tbody .btn').find(b => b.text().includes('下载安装包'))!
+    await dl.trigger('click')
+    await flushPromises()
+    // RPC 已返回 started 但事件未达：按钮保持「发起中…」禁用，重放点击不再发 RPC
+    const pending = wrapper.findAll('tbody .btn').find(b => b.text().includes('发起中…'))!
+    expect(pending.attributes('disabled')).toBeDefined()
+    await pending.trigger('click')
+    expect(svc.DownloadVersion).toHaveBeenCalledTimes(1)
+    // 首个事件到达：pending 摘除，进度交还 statusOf 驱动
+    runtime.handlers['douzy:version-download']({
+      data: { version: 'v0.11.5', stage: 'downloading', done: 10, total: 100, message: '' },
+    })
+    await nextTick()
+    expect(wrapper.find('.dz-status.downloading').exists()).toBe(true)
+    expect(wrapper.findAll('tbody .btn').some(b => b.text().includes('发起中…'))).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('下载失败（RPC 拒绝）：pending 撤防、按钮回落可再点，toast 如实报错', async () => {
+    stubDefaults([relV0115])
+    svc.DownloadVersion.mockRejectedValue(new Error('网络不可达'))
+    const wrapper = await mountView()
+    await wrapper.findAll('tbody .btn').find(b => b.text().includes('下载安装包'))!.trigger('click')
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('下载失败')
+    expect(useToast().toastMsg.value).toContain('网络不可达')
+    const retryable = wrapper.findAll('tbody .btn').find(b => b.text().includes('下载安装包'))!
+    expect(retryable.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('downloading 事件渲染进度条；done 事件清条目并刷新列表', async () => {
     stubDefaults()
     const wrapper = await mountView()
@@ -118,6 +153,10 @@ describe('DouzyView 下载与进度事件', () => {
     })
     await nextTick()
     expect(wrapper.find('.dz-status.downloading').exists()).toBe(true)
+    // 进度条走 UiProgressBar 标准形：role=progressbar + aria-valuenow 与百分比文本同步
+    const bar = wrapper.find('[role="progressbar"]')
+    expect(bar.exists()).toBe(true)
+    expect(bar.attributes('aria-valuenow')).toBe('34')
     expect(wrapper.find('.dz-percent').text()).toBe('34%')
 
     svc.ListInstalledVersions.mockClear()
@@ -168,6 +207,82 @@ describe('DouzyView 安装器与删除', () => {
     settleConfirm(false)
     await flushMicrotasks()
     expect(svc.RemoveVersion).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})
+
+describe('DouzyView 远程表空态与仓库地址门禁', () => {
+  it('首拉在途：表内显示「正在获取远程版本…」加载行', async () => {
+    svc.ListReleases.mockReturnValue(new Promise(() => {})) // 永不收口，保持在途
+    svc.ListInstalledVersions.mockResolvedValue([])
+    svc.RepositoryURL.mockResolvedValue('https://github.com/jiji262/douyin-downloader')
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain('正在获取远程版本…')
+    expect(wrapper.text()).not.toContain('GitHub API 不可达')
+    wrapper.unmount()
+  })
+
+  it('远程拉取失败：空行透出 listError 原文 + 重试钮（重试成功后落真实列表）', async () => {
+    svc.ListReleases.mockRejectedValue(new Error('镜像回退链亦未成功'))
+    svc.ListInstalledVersions.mockResolvedValue([])
+    svc.RepositoryURL.mockResolvedValue('https://github.com/jiji262/douyin-downloader')
+    const wrapper = await mountView()
+    const emptyRow = wrapper.find('tbody .empty-hint')
+    expect(emptyRow.text()).toContain('镜像回退链亦未成功')
+    expect(emptyRow.text()).not.toContain('GitHub API 不可达') // 不再武断归因
+    const retry = emptyRow.find('button.link-button')
+    expect(retry.text()).toBe('重试')
+    svc.ListReleases.mockResolvedValue([relV0115])
+    await retry.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.dz-ver-name').text()).toBe('v0.11.5')
+    wrapper.unmount()
+  })
+
+  it('无错误且非加载：真空态只说「暂无远程版本」', async () => {
+    stubDefaults([], [])
+    const wrapper = await mountView()
+    expect(wrapper.find('tbody .empty-hint').text()).toBe('暂无远程版本')
+    wrapper.unmount()
+  })
+
+  it('仓库地址获取失败：占位文案 + 复制/打开禁用，失败原因入 title', async () => {
+    stubDefaults()
+    svc.RepositoryURL.mockRejectedValue(new Error('绑定未就绪'))
+    const wrapper = await mountView()
+    expect(wrapper.find('.dz-repo').text()).toContain('仓库地址不可用')
+    const actions = wrapper.findAll('.dz-repo .link-button')
+    expect(actions).toHaveLength(2)
+    for (const b of actions) {
+      expect(b.attributes('disabled')).toBeDefined()
+      expect(b.attributes('title')).toContain('绑定未就绪')
+    }
+    wrapper.unmount()
+  })
+
+  it('后端返回空仓库地址：同样禁用两钮，不弹假成功回执', async () => {
+    stubDefaults()
+    svc.RepositoryURL.mockResolvedValue('')
+    const wrapper = await mountView()
+    const actions = wrapper.findAll('.dz-repo .link-button')
+    for (const b of actions) expect(b.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.dz-repo').text()).toContain('仓库地址不可用')
+    wrapper.unmount()
+  })
+
+  it('下载失败行「重试」是真按钮（键盘可达），点击重发 DownloadVersion', async () => {
+    stubDefaults([relV0115])
+    const wrapper = await mountView()
+    runtime.handlers['douzy:version-download']({
+      data: { version: 'v0.11.5', stage: 'error', done: 0, total: 0, message: '校验失败' },
+    })
+    await nextTick()
+    const retry = wrapper.findAll('tbody button.link-button').find(b => b.text() === '重试')!
+    expect(retry.exists()).toBe(true)
+    svc.DownloadVersion.mockResolvedValue('started')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('v0.11.5')
     wrapper.unmount()
   })
 })

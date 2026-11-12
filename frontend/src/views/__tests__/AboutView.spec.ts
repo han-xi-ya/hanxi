@@ -57,6 +57,24 @@ describe('AboutView', () => {
     expect(w.find('.error-panel').text()).toContain('绑定未就绪')
   })
 
+  it('加载失败：面板内重试钮重新执行加载，成功后落真实信息', async () => {
+    appSvc.GetAppInfo.mockRejectedValue(new Error('绑定未就绪'))
+    appSvc.ListModules.mockRejectedValue(new Error('绑定未就绪'))
+    const w = mount(AboutView)
+    await flushPromises()
+    const retry = w.find('.error-panel button')
+    expect(retry.exists()).toBe(true)
+    expect(retry.text()).toBe('重试')
+    // 重试路径复用 load()：后端恢复后错误面板消失、信息面板落位
+    appSvc.GetAppInfo.mockResolvedValue(INFO)
+    appSvc.ListModules.mockResolvedValue(MODULES)
+    await retry.trigger('click')
+    await flushPromises()
+    expect(w.find('.error-panel').exists()).toBe(false)
+    expect(w.find('.info-panel').text()).toContain('0.3.0')
+    expect(w.findAll('.module-row')).toHaveLength(2)
+  })
+
   // N36 尾账：OFL「随副本分发」义务 App 内侧（?raw 内联全文进产物，dist 静态拷贝为另一保险）
   it('字体许可区渲染三份 OFL 全文折叠段，摘要含字族与许可名', async () => {
     const w = await mountWith(INFO, MODULES)
