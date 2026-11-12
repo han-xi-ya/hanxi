@@ -58,6 +58,7 @@ import {
 import { MASK_DOTS } from '../constants/masking'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
+import { useWindowKeyListener } from '../composables/useWindowKeyListener'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
 import { useAsyncAction } from '../composables/useAsyncAction'
@@ -74,7 +75,7 @@ import {
   parseTagTokens,
 } from '../components/memo/memoMetrics'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
@@ -100,7 +101,7 @@ async function openQuickSheet() {
   try {
     await MemoAPI.MemoService.ShowQuickSheet()
   } catch (err: unknown) {
-    showToast(`唤出速记卡失败: ${getErrorMessage(err)}`)
+    showErrorToast(`唤出速记卡失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -247,7 +248,7 @@ async function commitQuick(openPage = true) {
       currentId.value = created.id
     }
   } catch (err: unknown) {
-    showToast(`记录失败: ${getErrorMessage(err)}`)
+    showErrorToast(`记录失败: ${getErrorMessage(err)}`)
   } finally {
     quickSaving.value = false
   }
@@ -291,7 +292,7 @@ async function onEditorSave(p: { id: string; title: string; content: string; tag
     }
     await loadMemos()
   } catch (err: unknown) {
-    showToast(`保存失败: ${getErrorMessage(err)}`)
+    showErrorToast(`保存失败: ${getErrorMessage(err)}`)
   } finally {
     savingMemo.value = false
   }
@@ -369,7 +370,7 @@ async function handleExportLibrary() {
       void copyWithToast(digest, '下载通道不可用，汇总全文已复制到剪贴板')
     }
   } catch (err: unknown) {
-    showToast(`导出失败: ${getErrorMessage(err)}`)
+    showErrorToast(`导出失败: ${getErrorMessage(err)}`)
   } finally {
     exporting.value = false
   }
@@ -387,7 +388,7 @@ const { run: runClearAll } = useAsyncAction()
 async function handleTogglePin(item: MemoItem) {
   const res = await runTogglePin(() => MemoAPI.MemoService.TogglePin(item.id))
   if (!res.ok) {
-    showToast(`操作失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`操作失败: ${getErrorMessage(res.error)}`)
     return
   }
   showToast(res.data ? '已置顶便签' : '已取消置顶')
@@ -397,7 +398,7 @@ async function handleTogglePin(item: MemoItem) {
 async function handleToggleMask(item: MemoItem) {
   const res = await runToggleMask(() => MemoAPI.MemoService.ToggleMask(item.id))
   if (!res.ok) {
-    showToast(`操作失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`操作失败: ${getErrorMessage(res.error)}`)
     return
   }
   showToast(res.data ? '已开启脱敏遮罩' : '已揭示明文')
@@ -414,7 +415,7 @@ async function handleDeleteMemo(id: string) {
   if (!accepted) return
   const res = await runDelete(() => MemoAPI.MemoService.Delete(id))
   if (!res.ok) {
-    showToast(`删除失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`删除失败: ${getErrorMessage(res.error)}`)
     return
   }
   if (currentId.value === id) currentId.value = ''
@@ -434,7 +435,7 @@ async function handleClearAll() {
   if (!accepted) return
   const res = await runClearAll(() => MemoAPI.MemoService.ClearAll())
   if (!res.ok) {
-    showToast(`全删失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`全删失败: ${getErrorMessage(res.error)}`)
     return
   }
   currentId.value = ''
@@ -450,11 +451,17 @@ async function copyMemoContent(content: string) {
 // Esc 出口纪律（阶梯降维）：溢出菜单 → 书写态回阅读页 → 收起当前页。
 // 菜单档由 MemoToolbar 自收（其 window keydown 与本函数同拍触发），本视图只判级让位。
 function onGlobalKey(e: KeyboardEvent) {
+  // 中文输入法组字中的 Esc 只取消候选，不该连降页面级（组字豁免同速记卡族规）
+  if (e.isComposing || e.key === 'Process') return
   if (e.key !== 'Escape') return
   if (toolbarMoreOpen.value) return // 菜单在场只收菜单，不连降页面级
   else if (showEditor.value) showEditor.value = false
   else if (currentId.value) currentId.value = ''
 }
+
+// KeepAlive 四斩挂摘走 useWindowKeyListener（ClipboardView 先例，审查 #20 同族
+// 病灶）：切页失活期 window 监听在场会让异页按 Esc 幽灵收起隐藏页的当前便签。
+useWindowKeyListener('keydown', onGlobalKey)
 
 // memo:changed 由局域网投递/多端联动触发：setup 期订阅防丢早期事件，卸载自动注销
 useWailsEvent('memo:changed', () => {
@@ -463,11 +470,9 @@ useWailsEvent('memo:changed', () => {
 
 onMounted(() => {
   loadMemos()
-  window.addEventListener('keydown', onGlobalKey)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onGlobalKey)
   ++loadSeq // 作废在飞请求，卸载后不得回写状态
   if (searchTimer) {
     clearTimeout(searchTimer)
@@ -505,21 +510,25 @@ watch(currentId, async () => {
     >
       <template #filters>
         <div class="memo-chips" aria-label="标签与置顶过滤">
-          <button class="tag-chip" :class="{ active: selectedTag === '' }" @click="handleSelectTag('')">
+          <button type="button" class="tag-chip" :class="{ active: selectedTag === '' }" :aria-pressed="selectedTag === ''" @click="handleSelectTag('')">
             全部 ({{ stats.totalCount }})
           </button>
           <button
             v-for="(count, tag) in stats.tagCloud"
             :key="tag"
+            type="button"
             class="tag-chip"
             :class="{ active: selectedTag === tag }"
+            :aria-pressed="selectedTag === tag"
             @click="handleSelectTag(String(tag))"
           >
             {{ tag }} <span class="tag-count">({{ count }})</span>
           </button>
           <button
             class="tag-chip chip-pin"
+            type="button"
             :class="{ active: filterPinned === true }"
+            :aria-pressed="filterPinned === true"
             title="只看置顶便签"
             @click="filterPinned = filterPinned === true ? null : true; loadMemos()"
           >
@@ -823,6 +832,10 @@ watch(currentId, async () => {
 
 /* 页面板头尾（本层是阅读态所用；MemoEditorPane 书写态自带同字面的 scoped 副本，
    两处不共享样式——改头尾形制须同步两件）。 */
+/* 阅读态容器：与书写态 .pane-write 同形制（flex 纵列 + gap + flex:1/min-height:0），
+   让内部 .pane-body 的 flex:1/overflow-y:auto 真正生效——长便签内滚而非撑破
+   max-height 把页脚推出视口，head/meta/body/tags/foot 之间留 10px 气口。 */
+.pane-read { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 .pane-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
 .pane-title {
   margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text);

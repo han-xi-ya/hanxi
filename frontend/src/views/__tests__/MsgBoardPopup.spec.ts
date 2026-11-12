@@ -80,11 +80,20 @@ describe('MsgBoardPopup', () => {
     wrapper.unmount()
   })
 
-  it('拉取失败不崩牌面（保持当前内容，等待窗口重建）', async () => {
+  it('首载失败落兜底撤牌面：无牌面但保留全屏点击/Esc 命中区，不冻屏', async () => {
     api.GetBoardContent.mockRejectedValue(new Error('boom'))
     const wrapper = mount(MsgBoardPopup, { attachTo: document.body })
     await flushPromises()
-    expect(wrapper.find('.board').exists()).toBe(false)
+    // 牌面不渲染，但兜底撤牌面在场（透明全屏窗不能整窗零渲染致"屏幕点不动"）
+    expect(wrapper.find('.board-card').exists()).toBe(false)
+    expect(wrapper.find('.board-fallback').exists()).toBe(true)
+    expect(wrapper.find('.fallback-note').text()).toContain('加载失败')
+    // 点击与 Esc 仍可撤牌
+    await wrapper.find('.board-fallback').trigger('click')
+    expect(api.Dismiss).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(api.Dismiss).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

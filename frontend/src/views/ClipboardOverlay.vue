@@ -28,6 +28,7 @@
 //     新→旧，filter 稳定保序）；
 //   - 数字键取舍：1-9 直选与搜索框聚焦天然打架——搜索词为空时裸数字键拦截为直选
 //     （preventDefault 不落字），有词时数字让位给搜索词；Alt+1-9 任何时候直选；
+//     Alt+P 置顶 / Alt+C 复制环上项（快操作钮守搜索焦点不可 Tab，快捷键补键盘路径）；
 //   - Enter = 直选环上项、Esc 收窗；组字豁免走三重盾（isComposing ||
 //     compositionstart/end 本地旗标 || key==='Process'，CommandPalette 形制）；
 //   - 收窗：Paste 成功或 Esc 后先 input.blur 摘光标、必调 CollapseOverlay 显式 RPC
@@ -106,6 +107,12 @@ const rows = computed<ClipEntry[]>(() => [
   ...raw.value.filter(isTop),
   ...raw.value.filter((e) => !isTop(e)),
 ])
+
+// 环上项 id（P2-16）：搜索框 role=combobox 经 aria-activedescendant 指向选中
+// option，↑↓ 换选对读屏有播报；空列表/错误条在场时无可指向项，回 undefined 摘属性。
+const activeOptionId = computed(() =>
+  !errorBar.value && rows.value.length ? `clip-opt-${Math.min(selected.value, rows.value.length - 1)}` : undefined,
+)
 
 const KIND_GLYPH: Record<ClipKind, string> = { text: '文', image: '图', file: '件' }
 const KIND_TITLE: Record<ClipKind, string> = { text: '文本', image: '图片', file: '文件' }
@@ -337,6 +344,20 @@ function onKey(e: KeyboardEvent) {
     collapseSelf()
     return
   }
+  // Alt+P 置顶 / Alt+C 复制：快操作三钮 tabindex=-1 + mousedown.prevent 守搜索
+  // 焦点纪律，键盘环选中后可见却按不到——补 Alt 快捷键对环上项直动（P1-9），
+  // 与 Alt+数字直选同谱；焦点恒留搜索框，不抢光标。e.key 大小写双收防 CapsLock。
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const k = e.key.toLowerCase()
+    if (k === 'p' || k === 'c') {
+      if (!rows.value.length) return
+      e.preventDefault()
+      const cur = rows.value[Math.min(selected.value, rows.value.length - 1)]
+      if (k === 'p') void togglePin(cur)
+      else void copyOnly(cur)
+      return
+    }
+  }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     const n = rows.value.length
     if (!n) return
@@ -450,6 +471,11 @@ onBeforeUnmount(() => {
           type="text"
           placeholder="搜索内容 / 来源 / 标签…（清空后 1-9 直选）"
           aria-label="搜索剪贴板历史"
+          role="combobox"
+          aria-autocomplete="list"
+          :aria-expanded="!errorBar && rows.length > 0 ? 'true' : 'false'"
+          aria-controls="clip-overlay-list"
+          :aria-activedescendant="activeOptionId"
           @compositionstart="composing = true"
           @compositionend="composing = false"
         />
@@ -472,6 +498,7 @@ onBeforeUnmount(() => {
       <p v-if="errorBar" class="clip-errbar" role="alert">剪贴板服务不可用: {{ errorBar }}</p>
       <ul
         v-show="!errorBar"
+        id="clip-overlay-list"
         ref="listEl"
         class="clip-list"
         role="listbox"
@@ -480,6 +507,7 @@ onBeforeUnmount(() => {
         <li
           v-for="(e, i) in rows"
           :key="e.id"
+          :id="`clip-opt-${i}`"
           class="clip-row"
           :class="{ 'is-active': i === selected }"
           role="option"
@@ -543,11 +571,16 @@ onBeforeUnmount(() => {
           </span>
         </li>
       </ul>
+      <!-- 空态两式主文案由 spec 钉死（.clip-empty 逐字），下一步引导另起小字一行，
+           不并进主文案（P2-17：空态须给下一步，不只一句"暂无"）。 -->
       <p v-if="!loading && !errorBar && !rows.length" class="clip-empty">
         {{ query.trim() ? '没有匹配的条目' : '剪贴板历史还是空的' }}
       </p>
+      <p v-if="!loading && !errorBar && !rows.length" class="clip-empty-tip">
+        {{ query.trim() ? '换个关键词，或清空搜索看全部历史' : '复制点什么（Ctrl+C）即会出现在这里' }}
+      </p>
       <div class="clip-foot">
-        <span class="clip-hint mono">↑↓ 环选 · ⏎/1-9 粘贴并收 · ⇧⏎ 排队 · 队列热键逐条贴 · Esc 收</span>
+        <span class="clip-hint mono">↑↓ 环选 · ⏎/1-9 粘贴并收 · ⇧⏎ 排队 · Alt+P 置顶 · Alt+C 复制 · Esc 收</span>
         <!-- 提示行常驻占位（速记卡族规）：出现/消失不顶动版面，错误恒小字 -->
         <p class="clip-tip" :class="tip ? (tipKind === 'err' ? 'tip-err' : 'tip-ok') : ''" role="status">{{ tip }}</p>
       </div>
@@ -768,7 +801,10 @@ onBeforeUnmount(() => {
   gap: 2px;
   opacity: 0;
 }
-/* hover 与选中环都亮钮：键盘用户经 ↑↓ 走到行上同样拿得到快操作 */
+/* hover 与选中环都亮钮（视觉可见）；但三钮 tabindex=-1 + mousedown.prevent 守
+   搜索焦点纪律，键盘 Tab 永远落不到钮上——键盘路径走 Alt+P 置顶 / Alt+C 复制
+   对环上项直动（onKey 内，P1-9），⇧⏎ 排队同谱。取舍如实登记：可见≠可 Tab，
+   快捷键是键盘用户的唯一快操作入口。 */
 .clip-row:hover .clip-acts,
 .clip-row.is-active .clip-acts {
   opacity: 1;
@@ -780,7 +816,7 @@ onBeforeUnmount(() => {
   font-size: var(--text-micro);
   line-height: 1;
   color: var(--color-text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   cursor: pointer;
 }
 .clip-act:hover {
@@ -823,9 +859,18 @@ onBeforeUnmount(() => {
 .clip-empty {
   flex: none;
   margin: 0;
-  padding: 18px 8px;
+  padding: 18px 8px 4px;
   text-align: center;
   font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+/* 空态下一步引导（P2-17）：比主文案再降一档的轻提示，居中不抢戏 */
+.clip-empty-tip {
+  flex: none;
+  margin: 0;
+  padding: 0 8px 14px;
+  text-align: center;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
 }
 
@@ -836,11 +881,13 @@ onBeforeUnmount(() => {
   gap: 10px;
   min-height: calc(var(--text-xs) * 1.5);
 }
+/* 快捷键提示行：补 Alt+P/Alt+C 后文案变长，窄窗允许折行不溢出（640 DIP 冻结） */
 .clip-hint {
   flex: none;
+  max-width: 60%;
   font-size: var(--text-micro);
+  line-height: 1.5;
   color: var(--color-text-subtle);
-  white-space: nowrap;
 }
 .clip-tip {
   flex: 1 1 auto;

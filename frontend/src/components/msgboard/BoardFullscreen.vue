@@ -13,6 +13,9 @@
 // Esc 监听生命周期（审查 #20，UiHistoryDialog 同族教训）：KeepAlive 四斩
 // 挂摘走公共件 useWindowKeyListener——切页失活期 window 监听在场会让
 // 异页按 Esc 幽灵收起隐藏预览。
+// 焦点管理（P2-15）：挂载聚焦 dialog 根（tabindex=-1）、关闭回焦触发点、
+// Tab 困窗——本浮层无交互子件，焦点恒钉根上，读屏播报对话框语义。
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useWindowKeyListener } from '../../composables/useWindowKeyListener'
 import BoardCard from './BoardCard.vue'
 
@@ -26,20 +29,45 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const layerEl = ref<HTMLElement | null>(null)
+// 触发点快照：开层前的焦点（宿主「全屏预览」钮），关闭时归还
+let previousFocus: HTMLElement | null = null
+
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  // 组字中的 Esc 只属于输入法，不劫持预览关闭（族规同速记卡）
+  if (e.isComposing || e.key === 'Process') return
+  if (e.key === 'Escape') {
+    emit('close')
+    return
+  }
+  // Tab 困窗：浮层内无可聚焦子件，Tab/Shift+Tab 一律钉回 dialog 根，
+  // 焦点不致逸出到下层页面（aria-modal 语义的键盘兑现）
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    layerEl.value?.focus()
+  }
 }
 
 // v-if 挂载即"浮层开着"：四斩纪律见 useWindowKeyListener 头注。
 useWindowKeyListener('keydown', onKey)
+
+onMounted(() => {
+  previousFocus = document.activeElement as HTMLElement | null
+  void nextTick(() => layerEl.value?.focus())
+})
+// 关闭/卸载回焦触发点：宿主 v-if 收层即卸载，焦点还给「全屏预览」钮不致落空
+onBeforeUnmount(() => previousFocus?.focus())
 </script>
 
 <template>
   <Teleport to="body">
     <div
+      ref="layerEl"
       class="mbp-full"
       role="dialog"
+      aria-modal="true"
       aria-label="牌面全屏预览"
+      tabindex="-1"
       @click="emit('close')"
     >
       <span class="mbp-full-badge" aria-hidden="true">预览浮层 · 非真实挂牌</span>
@@ -69,6 +97,10 @@ useWindowKeyListener('keydown', onKey)
   user-select: none;
   animation: mbp-full-in 150ms ease-out;
 }
+/* 焦点指示照 UiHistoryDialog 同谱：程序聚焦（:focus）不画整屏环，键盘 Tab
+   聚焦（:focus-visible）仍给环——压暗层本身即可见模态边界，环内收防溢出视口。 */
+.mbp-full:focus { outline: none; }
+.mbp-full:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .mbp-full-card {
   --bc-max-h: 74vh;
 }
@@ -86,7 +118,7 @@ useWindowKeyListener('keydown', onKey)
   left: 16px;
   padding: 2px 10px;
   border: 1px solid rgba(238, 246, 247, 0.25);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(6, 10, 14, 0.55);
   color: rgba(238, 246, 247, 0.8);
   font-size: var(--text-sm);
@@ -107,7 +139,7 @@ useWindowKeyListener('keydown', onKey)
   font-size: var(--text-sm);
   border: 1px solid rgba(238, 246, 247, 0.4);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   padding: 0 6px;
 }
 @media (prefers-reduced-motion: reduce) {

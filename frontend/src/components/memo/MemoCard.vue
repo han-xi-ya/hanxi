@@ -14,7 +14,7 @@
 //      （hover 弹提示同样是"渲染"）；
 //   ③ MD 徽标随之熄灭——暴露"正文含 Markdown 结构"本身就是结构泄漏。
 // 撤遮罩出口（toggleMask 钮）刻意常驻：遮罩纪律是"不给人看"，不是"不给解"，
-// 宿主行的 👁️ 钮与页面板「揭示明文」钮实证在位，emit 保留。
+// 宿主行的 eye/eye-off 描边图标钮与页面板「揭示明文」钮实证在位，emit 保留。
 //
 // 交互契约：标题区是键盘可达的 select 入口（role=button + Enter/Space），
 // 摘要块同挂 click→select（鼠标侧与主视图"点行翻页"一致）；标签丸可点
@@ -29,6 +29,7 @@ import { computed } from 'vue'
 import { MASK_DOTS } from '../../constants/masking'
 import { looksLikeMarkdown } from '../../utils/markdown'
 import { cardPreview, firstMeaningfulLine, fmtAgo, memoColorHex } from './memoMetrics'
+import MemoGlyph from './MemoGlyph.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -91,6 +92,11 @@ const timeTip = computed(() => {
   return Number.isNaN(d.getTime()) ? undefined : d.toLocaleString()
 })
 const tagList = computed(() => props.tags ?? [])
+// 列表档标签限宽：行式索引横向空间金贵，多标签只渲前 N 枚 + 「+n」余数丸，
+// 防 nowrap 拦腰裁切（P2-18）。grid 卡形态照旧全量换行，不受此档约束。
+const LIST_TAG_CAP = 2
+const shownTags = computed(() => (isList.value ? tagList.value.slice(0, LIST_TAG_CAP) : tagList.value))
+const hiddenTagCount = computed(() => (isList.value ? Math.max(0, tagList.value.length - LIST_TAG_CAP) : 0))
 </script>
 
 <template>
@@ -131,7 +137,7 @@ const tagList = computed(() => props.tags ?? [])
     <footer class="mc-foot">
       <span v-if="tagList.length" class="mc-tags">
         <span
-          v-for="t in tagList"
+          v-for="t in shownTags"
           :key="t"
           class="tag-pill tag-pill-clickable mc-tag"
           role="button"
@@ -140,6 +146,8 @@ const tagList = computed(() => props.tags ?? [])
           @keydown.enter.prevent="emit('tagSelect', t)"
           @keydown.space.prevent="emit('tagSelect', t)"
         >{{ t }}</span>
+        <!-- 列表档余数丸：被收起的标签数如实示人（grid 档 hiddenTagCount 恒 0 不出场） -->
+        <span v-if="hiddenTagCount" class="tag-pill mc-tag-more" :title="`还有 ${hiddenTagCount} 个标签，点开便签可见`">+{{ hiddenTagCount }}</span>
       </span>
       <time class="mc-time" :title="timeTip">{{ agoText }}</time>
     </footer>
@@ -152,7 +160,7 @@ const tagList = computed(() => props.tags ?? [])
         :aria-label="masked ? '揭示敏感信息' : '脱敏遮罩保护'"
         @click="emit('toggleMask')"
       >
-        {{ masked ? '👁️' : '🕶️' }}
+        <MemoGlyph :name="masked ? 'eye' : 'eye-off'" :size="15" />
       </button>
       <button
         type="button"
@@ -162,7 +170,7 @@ const tagList = computed(() => props.tags ?? [])
         :aria-label="pinned ? '取消置顶' : '固定置顶'"
         @click="emit('togglePin')"
       >
-        📌
+        <MemoGlyph name="pin" :size="15" />
       </button>
       <!-- 视图侧动作透传位（编辑/复制/删除等，确认与剪贴板逻辑归宿主） -->
       <slot name="actions" />
@@ -266,6 +274,8 @@ const tagList = computed(() => props.tags ?? [])
 .mc-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .mc-list .mc-tags { flex-wrap: nowrap; overflow: hidden; }
 .mc-tag { font-size: var(--text-xs); }
+/* 余数丸：中性软底小字，纯提示不可点（点开便签可见全量标签） */
+.mc-tag-more { flex: none; font-size: var(--text-xs); background: var(--surface-hover); color: var(--color-text-subtle); cursor: default; }
 .mc-time {
   margin-left: auto;
   flex: none;
@@ -277,15 +287,18 @@ const tagList = computed(() => props.tags ?? [])
 
 .mc-tools { grid-area: tools; display: flex; align-items: center; gap: 2px; flex: none; }
 .mc-btn {
+  display: inline-flex; align-items: center; justify-content: center;
   background: none;
   border: none;
   cursor: pointer;
+  color: var(--color-text-muted);
   font-size: var(--text-base);
   padding: 2px 4px;
   border-radius: var(--radius-micro);
-  transition: background var(--motion-fast) ease;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
-.mc-btn:hover { background: var(--surface-hover); }
+.mc-btn:hover { background: var(--surface-hover); color: var(--color-text); }
 .mc-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.mc-on { filter: saturate(1.3); }
+/* 置顶态描边图标转主色（emoji 退役后以色彩+整卡 is-pinned 描边双通道表意，ClipRow .cr-on 同谱） */
+.mc-on { color: var(--color-primary); }
 </style>

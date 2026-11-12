@@ -14,7 +14,7 @@
 // "预览与实盘同皮"是皮肤批起的新契约：盘面配色/描边色轨/图标像素预算与
 // QuickMenuPopup 吃同一套 wheelSkin/wheelIconBudget 口径（父层喂 skin prop），
 // 设置页拨皮肤即时见皮，不再"设置页一个样、挂出另一个样"。
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
 import AppIcon from '../ui/AppIcon.vue'
 import { wheelIconOf } from './wheelIcons'
@@ -54,6 +54,11 @@ function slotStyle(i: number, n: number): { left: string; top: string } {
 const emit = defineEmits<{ pick: [index: number] }>()
 const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
 
+// 悬停索引（P2-10）：图标/名字按钮层盖住扇区中心，.wp-sector:hover 只在指针
+// 落楔形面才生效，槽位中心成 hover 死区——抬 hover 索引同步点亮对应扇区，
+// 与槽位自身的 :hover 染色双通道，盘面与槽位反馈一致。null = 无悬停。
+const hoverIndex = ref<number | null>(null)
+
 const n = computed(() => props.items.length)
 const wedge = (i: number) => {
   // 预览绘制喂 VIS 观感常量（花瓣缝/收窄环带）——与真盘观感同源；
@@ -87,8 +92,11 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 </script>
 
 <template>
-  <div class="wp" :class="[rootClass, { 'wp-trim': trim }]" :style="hubVars" role="img" aria-label="轮盘预览">
-    <svg :viewBox="viewBox" class="wp-svg">
+  <!-- role=group（P2-11）：原 role=img 使子树对读屏全呈呈现性，内部真实 button
+       又被 tabindex=-1 屏蔽——改 group 保留 aria-label，槽位 tabindex=0 键盘可达。 -->
+  <div class="wp" :class="[rootClass, { 'wp-trim': trim }]" :style="hubVars" role="group" aria-label="轮盘预览">
+    <!-- 盘底纯装饰（面/缘/楔形/hub 均由槽位按钮承载交互与语义），读屏不重复播报 -->
+    <svg :viewBox="viewBox" class="wp-svg" aria-hidden="true">
       <defs>
         <radialGradient id="wp-face-grad" cx="50%" cy="38%" r="80%">
           <stop offset="0%" class="wp-face-hi" />
@@ -104,10 +112,12 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
         v-for="(item, i) in items"
         :key="`wp-${i}-${item.index}`"
         class="wp-sector"
-        :class="[{ 'is-active': activeIndex === i }, typeClass(item)]"
+        :class="[{ 'is-active': activeIndex === i, 'is-hover': hoverIndex === i }, typeClass(item)]"
         :style="sectorTint(item) ? { '--tint': sectorTint(item) } : {}"
         :d="wedge(i)"
         @click="emit('pick', i)"
+        @mouseenter="hoverIndex = i"
+        @mouseleave="hoverIndex = null"
       />
       <circle :cx="size / 2" :cy="size / 2" :r="WHEEL.rHub" class="wp-hub" />
     </svg>
@@ -120,8 +130,12 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
       :style="slotStyle(i, n)"
       :title="item.label"
       :aria-label="`扇区 ${i + 1}：${item.label}`"
-      tabindex="-1"
+      tabindex="0"
       @click="emit('pick', i)"
+      @mouseenter="hoverIndex = i"
+      @mouseleave="hoverIndex = null"
+      @focus="hoverIndex = i"
+      @blur="hoverIndex = null"
     >
       <span class="wp-ico"><AppIcon :name="wheelIconOf(item)" :size="iconPx(item)" /></span>
       <span class="wp-name">{{ item.label }}</span>
@@ -161,7 +175,10 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 .wp-sector.t-route { --type-c: var(--state-positive); }
 .wp-sector.t-group { --type-c: var(--state-warning); }
 .wp-sector { pointer-events: auto; cursor: pointer; fill: transparent; stroke: color-mix(in srgb, var(--tint, var(--type-c, var(--color-border))) var(--wf-edge, 38%), var(--color-border)); stroke-width: 1.5; transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease; }
-.wp-sector:hover { fill: var(--surface-hover); }
+/* hover 双通道（P2-10）：指针落楔形面走 :hover；落槽位中心（按钮层盖住扇区）
+   经 hoverIndex 抬 is-hover 同步点亮——active 选中态优先级更高，置后覆盖。 */
+.wp-sector:hover,
+.wp-sector.is-hover { fill: var(--surface-hover); }
 .wp-sector.is-active { fill: var(--color-primary-soft); stroke: var(--color-primary); }
 .wp-hub { fill: var(--surface-panel); stroke: var(--color-border-strong); stroke-width: 1; }
 .wp-slot {
@@ -171,6 +188,12 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
   border: none; background: transparent; padding: 0;
   color: var(--color-text-muted); cursor: pointer;
 }
+/* 槽位悬停/键盘聚焦：图标座与名字上 primary 染色（与扇区 is-hover 同步），
+   选中态 is-active 置后保持优先；焦点环交还 base.css 全局 :focus-visible。 */
+.wp-slot:hover,
+.wp-slot:focus-visible { color: var(--color-primary); }
+.wp-slot:hover .wp-name,
+.wp-slot:focus-visible .wp-name { color: var(--color-primary); }
 .wp-slot.is-active { color: var(--color-primary); }
 .wp-ico { display: flex; align-items: center; justify-content: center; }
 .wp-name {

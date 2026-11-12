@@ -181,6 +181,7 @@ describe('MsgBoardView', () => {
   it('挂/撤按钮调 Toggle；msgboard:changed 事件刷新状态徽标', async () => {
     const wrapper = await mountView(status({ shown: false }))
     await wrapper.find('.mb-hero .btn-primary').trigger('click')
+    await flushPromises() // toggling 在途闸落定后文案复位（P2-14 防连点）
     expect(api.Toggle).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('立即挂牌')
 

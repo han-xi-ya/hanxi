@@ -126,20 +126,23 @@ const editorPreviewHtml = computed(() =>
       <div class="pane-color-tags">
         <span class="pane-block-label">色彩</span>
         <div class="color-row">
-          <div
+          <button
             v-for="c in COLOR_OPTIONS"
             :key="c.val"
+            type="button"
             class="color-circle"
             :style="{ background: c.hex }"
             :class="{ selected: form.colorTag === c.val }"
             :title="c.name"
+            :aria-label="`色彩标识：${c.name}`"
+            :aria-pressed="form.colorTag === c.val"
             @click="form.colorTag = c.val"
-          ></div>
+          ></button>
         </div>
         <span class="pane-block-label">标签</span>
         <div class="tags-input-box">
           <span v-for="t in form.tags" :key="t" class="tag-pill memo-tag memo-tag-removable">
-            {{ t }} <span class="memo-tag-x" title="移除标签" @click="removeTag(t)">✕</span>
+            {{ t }} <button type="button" class="memo-tag-x" :title="`移除标签 ${t}`" :aria-label="`移除标签 ${t}`" @click="removeTag(t)">✕</button>
           </span>
           <input
             v-model="form.tagInput"
@@ -181,7 +184,9 @@ const editorPreviewHtml = computed(() =>
 .pane-color-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; margin-top: 4px; }
 .pane-block-label { font-size: var(--text-xs); color: var(--color-text-muted); flex: none; }
 .color-row { display: flex; gap: 10px; padding: 2px 0; flex: none; }
-.color-circle { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; transition: transform var(--motion-fast) ease; }
+/* 真 button（键盘可达 + aria-pressed）：去 UA 边/底，色彩圆点本体由内联用户色供给；
+   焦点环交还 base.css 全局 :focus-visible，选中态另挂 .selected 描边双通道表意。 */
+.color-circle { width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%; cursor: pointer; transition: transform var(--motion-fast) ease; }
 .color-circle:hover { transform: scale(1.15); }
 .color-circle.selected { outline: 2px solid var(--color-text); outline-offset: 2px; }
 .tags-input-box {
@@ -192,7 +197,8 @@ const editorPreviewHtml = computed(() =>
    交还 base.css 全局 :focus-visible 环。 */
 .tag-entry { flex: 1 1 120px; min-width: 0; border: none; background: transparent; padding: 3px 2px; color: var(--color-text); font-size: var(--text-base); }
 .memo-tag-removable { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-hover); }
-.memo-tag-x { cursor: pointer; font-size: var(--text-micro); color: var(--color-text-subtle); }
+/* 真 button 移除标签：去 UA 边/底，✕ 字形即图标，焦点环交还全局 :focus-visible */
+.memo-tag-x { background: none; border: none; padding: 0 2px; cursor: pointer; font-size: var(--text-micro); line-height: 1; color: var(--color-text-subtle); border-radius: var(--radius-micro); }
 .memo-tag-x:hover { color: var(--state-danger); }
 .preview-void { background: transparent; border-style: dashed; }
 

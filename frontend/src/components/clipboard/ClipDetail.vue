@@ -21,7 +21,7 @@
 //
 // 敏感位（sensitive）在详情顶部恒挂警示条 + **正文默认遮蔽**（v1.8 兑现决策
 // 档案"三道闸一条退路"闸③：视图侧明文不渲染按 MemoCard masked 纪律延伸）：
-// 遮罩纪律是"不给人看"不是"不给解"——👁️ 撤遮钮常驻，换条目自动回遮；
+// 遮罩纪律是"不给人看"不是"不给解"——eye 描边撤遮钮常驻，换条目自动回遮；
 // 复制/粘贴动作以 id 为键走后端取原文，展示遮蔽不影响任何动作链。
 //（比 MemoCard 稍宽的面径：页脚元数据保留——窗口标题是来路现场，List 面
 // 本就恒带 SourceApp；正文才是敏感面。口径登记契约 §12 v1.8。）
@@ -113,7 +113,7 @@ function copyFilePath(path: string) {
           :aria-label="isMasked ? '揭示敏感信息' : '脱敏遮罩保护'"
           :aria-pressed="isMasked ? 'false' : 'true'"
           @click="revealed = !revealed"
-        >{{ isMasked ? '👁️' : '🕶️' }}</button>
+        ><ClipGlyph :name="isMasked ? 'eye' : 'eye-off'" :size="14" /></button>
       </div>
 
       <div class="cd-body">

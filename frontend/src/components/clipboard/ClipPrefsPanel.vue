@@ -345,7 +345,7 @@ function revertAll() {
   font-size: var(--text-micro); padding: 0 2px; flex: none;
 }
 .cp-chip-x:hover { color: var(--state-danger); }
-.cp-chip-x:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 2px; }
+.cp-chip-x:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: var(--radius-micro); }
 
 .cp-addrow { display: flex; gap: 6px; min-width: 0; }
 .cp-add-input { flex: 1 1 120px; min-width: 0; }

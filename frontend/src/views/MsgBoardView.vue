@@ -69,6 +69,9 @@ const screens = shallowRef<ScreenInfo[]>([])
 const form = ref<Config>({ text: '', fontSize: 64, screen: '', hotkey: '', everyScreen: true })
 const loading = ref(true)
 const saving = ref(false)
+// Toggle 在途闸（参照同文件 saveCore 的 saving 闸）：Toggle 是翻转语义，
+// 连点双发会把"挂出"翻成"挂出又撤下"——在途禁用按钮并保文案宽度（P2-14）。
+const toggling = ref(false)
 const errorMsg = ref('')
 const savedTip = ref(false)
 // 服务器快照：任何"表单 vs 已存配置"的脏判定都以它为准（SetConfig 落库后回读）。
@@ -165,6 +168,8 @@ async function save() {
 }
 
 async function toggle() {
+  if (toggling.value) return
+  toggling.value = true
   errorMsg.value = ''
   try {
     await MsgBoardAPI.MsgBoardService.Toggle()
@@ -172,6 +177,7 @@ async function toggle() {
     errorMsg.value = getErrorMessage(err)
   } finally {
     await refreshStatus()
+    toggling.value = false
   }
 }
 
@@ -306,8 +312,8 @@ onMounted(refresh)
             <UiStatusChip v-if="hotkeyMissing" tone="warning">热键未在位</UiStatusChip>
             <UiStatusChip v-if="shown && status && !status.keepAwake" tone="warning">防休眠登记失败</UiStatusChip>
             <span class="tb-spacer" aria-hidden="true"></span>
-            <UiButton class="hero-cta" :variant="shown ? 'danger' : 'primary'" @click="toggle">
-              {{ shown ? '撤下留言牌' : '立即挂牌' }}
+            <UiButton class="hero-cta" :variant="shown ? 'danger' : 'primary'" :disabled="toggling" @click="toggle">
+              {{ toggling ? '处理中…' : shown ? '撤下留言牌' : '立即挂牌' }}
             </UiButton>
             <UiButton variant="secondary" small @click="fullPreview = true">全屏预览</UiButton>
           </div>
@@ -529,7 +535,8 @@ onMounted(refresh)
 .tb-spacer { flex: 1; min-width: 0; }
 .hero-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-border-strong); flex: none; }
 .hero-dot.on { background: var(--state-positive); }
-.hero-cta { min-height: 36px; padding: 6px 16px; font-size: var(--text-md); font-weight: 600; }
+/* 保文案宽度：在途"处理中…"与常态"撤下留言牌/立即挂牌"同宽，禁用不抖版面 */
+.hero-cta { min-height: 36px; min-width: 7.5em; padding: 6px 16px; font-size: var(--text-md); font-weight: 600; }
 
 /* 桌面模拟底：两档 color-mix 灰随主题联动；牌超高只裁不滚（--bc-max-h 反算
    注入已内化在 BoardStage，盒外观/高度按职责边界留在宿主） */
@@ -603,7 +610,7 @@ onMounted(refresh)
 .usage-summary { cursor: pointer; list-style: none; }
 .usage-summary::-webkit-details-marker { display: none; }
 .usage-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.65; }
-kbd { font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface-soft); color: var(--color-text); }
+kbd { font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border-strong); border-bottom-width: 2px; border-radius: var(--radius-micro); padding: 0 5px; background: var(--surface-soft); color: var(--color-text); }
 .panel-foot { display: flex; justify-content: flex-end; }
 
 /* 正文框可视标签是"正文"行名（setting-name 非 for 关联），隐藏标签兜底

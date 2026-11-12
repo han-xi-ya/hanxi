@@ -23,7 +23,7 @@
 //     （document click capture）收、Esc 收、菜单内点击冒泡收尾自动收；开合
 //     状态经 moreChange 如实外播——宿主的全局 Esc 阶梯需要知道"菜单在场时
 //     Esc 只收菜单"，否则一次 Esc 连降两级。本件对"点了什么"零感知。
-import { onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 import ClipGlyph from './ClipGlyph.vue'
 import { CLIP_FILTER_LABELS, type ClipFilter } from './clipboardFormat'
 
@@ -74,7 +74,12 @@ const FILTER_GLYPHS: Partial<Record<ClipFilter, string>> = {
 }
 
 const rootEl = ref<HTMLElement | null>(null)
+const moreBtnEl = ref<HTMLButtonElement | null>(null)
+const menuEl = ref<HTMLElement | null>(null)
 const moreOpen = ref(false)
+// 焦点回触发钮的时机：Esc/菜单项点击/Tab 出菜单收合时回焦；点外收合不回
+// （用户点别处自有新焦点，抢回反而打断）；卸载收合不回（钮将随件销毁）。
+let refocusOnClose = false
 
 function openMore(on: boolean) {
   const changed = moreOpen.value !== on
@@ -84,9 +89,16 @@ function openMore(on: boolean) {
     // 点外即收：捕获期的 document click 只挂开合期，卸载/关闭必摘（防泄露监听）
     document.addEventListener('click', onDocClick, true)
     window.addEventListener('keydown', onKey)
+    // 开窗即把焦点送进菜单首个可用项（role=menu 键盘动线起点），读屏随之播报
+    void nextTick(() => {
+      menuEl.value?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
+    })
   } else {
     document.removeEventListener('click', onDocClick, true)
     window.removeEventListener('keydown', onKey)
+    // Esc/选中项/Tab 出菜单收合：焦点回触发钮，键盘用户不致焦点落空
+    if (refocusOnClose) moreBtnEl.value?.focus()
+    refocusOnClose = false
   }
 }
 
@@ -95,7 +107,29 @@ function onDocClick(e: MouseEvent) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') openMore(false)
+  // 组字中的 Esc/Tab 只属于输入法，不劫持菜单（族规同主窗速记行）
+  if (e.isComposing || e.key === 'Process') return
+  if (e.key === 'Escape') {
+    refocusOnClose = true
+    openMore(false)
+    return
+  }
+  // Tab 走出菜单首/末项即收合并回焦触发钮（菜单不是 Tab 环困窗，是顺流动线）
+  if (e.key === 'Tab' && menuEl.value) {
+    const items = Array.from(menuEl.value.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'))
+    if (!items.length) return
+    const active = document.activeElement
+    if ((!e.shiftKey && active === items[items.length - 1]) || (e.shiftKey && active === items[0])) {
+      refocusOnClose = true
+      openMore(false)
+    }
+  }
+}
+
+// 菜单项点击（容器 @click 收尾）：选中即收，焦点回触发钮
+function onMenuClick() {
+  refocusOnClose = true
+  openMore(false)
 }
 
 function onInput(e: Event) {
@@ -174,16 +208,17 @@ onBeforeUnmount(() => openMore(false))
 
     <div class="ct-more">
       <button
+        ref="moreBtnEl"
         type="button"
         class="btn btn-ghost btn-small ct-more-btn"
         :aria-expanded="moreOpen ? 'true' : 'false'"
-        aria-haspopup="true"
+        aria-haspopup="menu"
         title="低频动作：记录设置、清空全部历史（需强确认）"
         @click="openMore(!moreOpen)"
       >
         更多 <span class="ct-caret" aria-hidden="true">▾</span>
       </button>
-      <div v-if="moreOpen" class="ct-menu" @click="openMore(false)">
+      <div v-if="moreOpen" ref="menuEl" class="ct-menu" role="menu" @click="onMenuClick">
         <button
           type="button"
           class="ct-menu-item"

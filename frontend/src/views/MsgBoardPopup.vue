@@ -15,11 +15,18 @@ import BoardCard from '../components/msgboard/BoardCard.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 
 const content = ref<BoardContent | null>(null)
+// 首载失败标记：透明全屏窗若一帧不渲染，用户只见"屏幕点不动"——
+// 失败也须留撤牌命中区（点击/Esc），不能整窗零渲染。
+const loadFailed = ref(false)
 
 async function pull() {
   try {
     content.value = await MsgBoardAPI.MsgBoardService.GetBoardContent()
-  } catch { /* 拉取失败保持当前牌面；窗口销毁重建时页面本就全新加载 */ }
+    loadFailed.value = false
+  } catch {
+    // 已有牌面保持不动（热更失败不撤牌）；首载失败落兜底撤牌面
+    if (!content.value) loadFailed.value = true
+  }
 }
 
 async function dismiss() {
@@ -48,6 +55,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   <div v-if="content" class="board" role="dialog" aria-label="留言牌" @click="dismiss">
     <BoardCard class="board-card" :text="text" :font-size="fontSize" />
     <div class="board-hint" aria-hidden="true">点击任意处或按 <kbd class="board-kbd">Esc</kbd> 撤牌</div>
+  </div>
+  <!-- 首载失败兜底：无牌面也保留全屏撤牌命中区，错误小字如实告知，点击/Esc 仍可撤 -->
+  <div v-else-if="loadFailed" class="board board-fallback" role="dialog" aria-label="留言牌加载失败" @click="dismiss">
+    <p class="fallback-note">留言牌加载失败，点击任意处或按 <kbd class="board-kbd">Esc</kbd> 关闭</p>
   </div>
 </template>
 
@@ -90,12 +101,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   0%, 76% { opacity: 1; }
   100% { opacity: 0; }
 }
+/* 首载失败兜底面：与牌面同压暗底（透明窗规范 #50 唯一允许的"底"），错误小字居中。
+   色族对齐 .board-hint 的半透明冷白（浮于压暗层之上，非面板语义色）。 */
+.fallback-note {
+  margin: 0;
+  padding: 0 24px;
+  text-align: center;
+  font-size: var(--text-md);
+  color: rgba(238, 246, 247, 0.78);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
 .board-kbd {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   border: 1px solid rgba(238, 246, 247, 0.4);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   padding: 0 6px;
 }
 @media (prefers-reduced-motion: reduce) {

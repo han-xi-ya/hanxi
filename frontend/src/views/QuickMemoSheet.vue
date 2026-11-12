@@ -113,6 +113,8 @@ function onEnter(e: KeyboardEvent) {
 }
 
 function onKey(e: KeyboardEvent) {
+  // 中文输入法组字中的 Esc 只取消候选，不该收卡丢草稿（与 onEnter 同款组字豁免）
+  if (e.isComposing || e.key === 'Process') return
   if (e.key === 'Escape') void dismiss()
 }
 

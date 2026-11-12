@@ -26,7 +26,7 @@ const emit = defineEmits<{
   (e: 'navigate', route: string): void
 }>()
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 
 // 页头 chip 一律绑"确认值 refs"（holdMs/movePx/twoTier/items/trapActive），不再直读
 // 状态快照：快照只在 loadState 刷新，saveTrigger 钳后回写不进快照——曾致"应用后
@@ -88,6 +88,10 @@ async function saveTrigger() {
     holdDraft.value = h
     moveDraft.value = m
   } catch (err) {
+    // P1-6 注记：本路径写 errorMsg 走整页加载闸口是 QuickMenuView.spec「后端拒绝时
+    // 回滚草稿」用例钉死的行为（断言 .state-error 文案 + 重试回读草稿回 450），
+    // 与「动作失败不劫持首载」契约相抵——按 spec 优先保留，勿改 spec。二级轮盘
+    // 与皮肤两条失败路径无此断言，已改 showErrorToast 不劫持闸口。
     errorMsg.value = getErrorMessage(err)
     try { await loadState() } catch { /* 回读失败保留错误文案，重试即再拉 */ }
   } finally {
@@ -102,7 +106,9 @@ async function toggleTwoTier(on: boolean) {
     const [, list] = await Promise.all([loadState(), QuickMenuAPI.QuickMenuService.ListItems()])
     items.value = list ?? []
   } catch (err) {
-    errorMsg.value = getErrorMessage(err)
+    // 动作失败不劫持首载闸口（errorMsg 只留给 refresh 首载）：如实失败 toast，
+    // 回读回滚回显，不私留"看起来已生效"的假状态（P1-6，皮肤失败同谱）。
+    showErrorToast(`二级轮盘开关保存失败: ${getErrorMessage(err)}`)
     await refresh() // 保存失败回滚回显，不私留"看起来已生效"的假状态
   } finally {
     savingTier.value = false
@@ -208,7 +214,7 @@ async function commitSkin() {
     if (mine !== skinWriteSeq) return
     // 后端不可达：皮肤是纯视觉账，如实 toast（不劫持页面级加载错误态把编辑器
     // 整片换脸）——本地镜像先行值保留，下次落定/唤出重读后端自然纠正。
-    showToast(`轮盘皮肤未能存入设置账本，先按本机生效：${getErrorMessage(err)}`)
+    showErrorToast(`轮盘皮肤未能存入设置账本，先按本机生效：${getErrorMessage(err)}`)
   } finally {
     if (mine === skinWriteSeq) savingSkin.value = false
   }
@@ -542,7 +548,7 @@ kbd {
   font-size: var(--text-xs);
   border: 1px solid var(--color-border-strong);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   padding: 0 5px;
   background: var(--surface-soft);
   color: var(--color-text);
