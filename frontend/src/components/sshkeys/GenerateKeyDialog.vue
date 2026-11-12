@@ -183,7 +183,7 @@ watch(() => props.open, (v) => { if (!v) resetForm() })
 
         <div class="btn-group kops-actions">
           <button class="btn btn-secondary" :disabled="working" @click="close">取消</button>
-          <button id="kops-gen-submit" class="btn btn-primary" :disabled="!canSubmit" @click="submit">
+          <button id="kops-gen-submit" class="btn" :class="overwrite ? 'btn-danger' : 'btn-primary'" :disabled="!canSubmit" @click="submit">
             {{ working ? '生成中…' : (overwrite ? '覆盖生成' : '生成') }}
           </button>
         </div>

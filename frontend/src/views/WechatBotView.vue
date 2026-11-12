@@ -41,6 +41,7 @@ const {
   refreshContextToken,
   isRefreshingToken,
   toggleAccountListener,
+  togglingListenerId,
   openRenameModal,
   handleDeleteAccount,
   showBindModal,
@@ -96,6 +97,7 @@ const showRulesBanner = ref(true)
             :collapsed="isSidebarCollapsed"
             :editing-target-user="isEditingTargetUser"
             :refreshing-token="isRefreshingToken"
+            :toggling-listener="togglingListenerId === currentAccount?.id"
             v-model:targetUserInput="toUserIdInput"
             @expand="isSidebarCollapsed = false"
             @edit-target="isEditingTargetUser = true"
@@ -173,7 +175,7 @@ const showRulesBanner = ref(true)
   display: flex;
   flex: 1;
   background: var(--surface-panel);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-border);
   overflow: hidden;
   box-shadow: var(--shadow-small);

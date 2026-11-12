@@ -611,22 +611,28 @@ export function useTerminal() {
   // —— 搜索（SearchAddon 薄壳；Ctrl+F 唤起，Enter 下一个 / Shift+Enter 上一个，Esc 关）——
   const searchOpen = ref(false)
   const searchText = ref('')
+  // 无命中就地反馈（role=status 播报）：findNext/findPrevious 的布尔返回不再丢弃；
+  // n/N 计数待 addon 提供匹配总数 API，当前仅有无命中态。
+  const searchNoMatch = ref(false)
 
   function toggleSearch(): void {
     searchOpen.value = !searchOpen.value
     if (searchOpen.value) {
+      searchNoMatch.value = false // 重新唤起不带上一次的无命中残留
       // 搜索条是 v-if 位：置真后 DOM 要等一拍才有输入框（nextTick 再聚焦）
       void nextTick(() => document.querySelector<HTMLInputElement>('.tm-search-input')?.focus())
     } else {
+      searchNoMatch.value = false
       term?.focus()
     }
   }
 
   function runSearch(next: boolean): void {
     const q = searchText.value
-    if (!q) return
-    if (next) searchAddon?.findNext(q)
-    else searchAddon?.findPrevious(q)
+    if (!q) { searchNoMatch.value = false; return }
+    // addon 未装配（终端未挂载）同样按无命中如实播报，不静默吞掉按键
+    const found = next ? searchAddon?.findNext(q) : searchAddon?.findPrevious(q)
+    searchNoMatch.value = !found
   }
 
   // —— xterm 装配 ——
@@ -745,9 +751,10 @@ export function useTerminal() {
     // 搜索
     searchOpen,
     searchText,
+    searchNoMatch,
     toggleSearch,
     runSearch,
-    closeSearch: () => { searchOpen.value = false; term?.focus() },
+    closeSearch: () => { searchOpen.value = false; searchNoMatch.value = false; term?.focus() },
     // xterm 引擎
     mountTerminal,
     disposeTerminal,

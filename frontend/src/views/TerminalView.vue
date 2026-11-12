@@ -42,6 +42,7 @@ const {
   reconnectNow,
   searchOpen,
   searchText,
+  searchNoMatch,
   toggleSearch,
   runSearch,
   closeSearch,
@@ -146,6 +147,7 @@ const overlayMessage = computed(() => {
             @keydown.shift.enter.prevent="runSearch(false)"
             @keydown.esc="closeSearch"
           >
+          <span v-if="searchNoMatch" class="tm-search-miss" role="status">无匹配</span>
           <button type="button" class="btn btn-secondary btn-small" title="上一个匹配（Shift+Enter）" @click="runSearch(false)">上一个</button>
           <button type="button" class="btn btn-secondary btn-small" title="下一个匹配（Enter）" @click="runSearch(true)">下一个</button>
           <button type="button" class="btn btn-ghost btn-small" title="关闭搜索（Esc）" @click="closeSearch">关闭</button>
@@ -239,6 +241,13 @@ const overlayMessage = computed(() => {
   border-radius: var(--radius-control);
   background: var(--surface-panel);
   color: var(--color-text);
+}
+/* 无命中就地播报：警示色 + 文字双通道，不靠颜色单独表意 */
+.tm-search-miss {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--state-warning);
+  white-space: nowrap;
 }
 
 .tm-screen-wrap {

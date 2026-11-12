@@ -126,6 +126,9 @@ export function useWechatBot() {
 
   // 刷新状态
   const isRefreshingToken = ref(false)
+  // 监听切换在途账号（per-account 闸，与 isRefreshingToken 同形制）：
+  // 头区「启动/停止监听」与侧栏快捷钮共用同一把锁，在途连点不得两发竞走。
+  const togglingListenerId = ref('')
 
   // 自动平滑滚动到底部（经 ChatFlow 组件句柄触达滚动容器，nextTick 时序即契约）
   function scrollToBottom(smooth = false) {
@@ -349,8 +352,10 @@ export function useWechatBot() {
     }
   }
 
-  // 切换当前账号监听
+  // 切换当前账号监听（per-account 在途闸：同一账号在途期间重复触发直接丢弃）
   async function toggleAccountListener(acc: WechatAccountState) {
+    if (togglingListenerId.value === acc.id) return
+    togglingListenerId.value = acc.id
     try {
       if (acc.isListening) {
         await WechatAPI.WechatService.StopAccountListener(acc.id)
@@ -364,6 +369,8 @@ export function useWechatBot() {
       await loadAccounts()
     } catch (err: unknown) {
       showToast(`切换监听失败: ${getErrorMessage(err)}`)
+    } finally {
+      togglingListenerId.value = ''
     }
   }
 
@@ -803,6 +810,7 @@ export function useWechatBot() {
     isRefreshingToken,
     // 账号操作
     toggleAccountListener,
+    togglingListenerId,
     openRenameModal,
     handleDeleteAccount,
     // 扫码绑定

@@ -136,7 +136,7 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 200px;
   background: var(--surface-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px dashed var(--color-border);
   padding: 12px;
 }
@@ -172,7 +172,7 @@ onUnmounted(() => {
 .qr-badge-pill {
   font-size: var(--text-xs);
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-element);
   background: var(--surface-hover);
   color: var(--color-text-muted);
 }
@@ -198,7 +198,7 @@ onUnmounted(() => {
   color: var(--color-on-accent);
   border: none;
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-sm);
   cursor: pointer;
 }

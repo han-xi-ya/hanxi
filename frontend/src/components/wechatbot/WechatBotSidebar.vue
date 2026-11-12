@@ -22,6 +22,17 @@ const emit = defineEmits<{
   'rename': [acc: WechatAccountState]
   'delete': [acc: WechatAccountState]
 }>()
+
+// 卡片键盘选中：Enter/Space 双键（ARIA button 契约）；组字豁免前置。
+// 只处理落在卡片本体上的按键——内嵌动作钮自己的 Enter/Space 不得冒泡成选中。
+function onCardKeydown(e: KeyboardEvent, id: string) {
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.target !== e.currentTarget) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    emit('select', id)
+  }
+}
 </script>
 
 <template>
@@ -62,13 +73,20 @@ const emit = defineEmits<{
         </button>
       </div>
 
+      <!-- 账号卡：div+role=button（内嵌动作钮，真 button 嵌套非法）；
+           Enter/Space 双键选中，组字豁免；焦点环走全局 :focus-visible -->
       <div
         v-for="acc in accounts"
         :key="acc.id"
         class="account-item-card"
         :class="{ active: acc.id === currentAccountId, 'is-mini': collapsed }"
         :title="collapsed ? `${acc.remarkName} (${acc.isListening ? '监听中' : '未监听'})` : undefined"
+        role="button"
+        tabindex="0"
+        :aria-current="acc.id === currentAccountId ? 'true' : undefined"
+        :aria-label="`选择账号 ${acc.remarkName || acc.id}`"
         @click="emit('select', acc.id)"
+        @keydown="onCardKeydown($event, acc.id)"
       >
         <!-- 账号头像 (对应备注的微信号) -->
         <div class="bot-avatar" :style="{ backgroundColor: getAvatarColor(acc.remarkName || acc.id) }">
@@ -96,7 +114,7 @@ const emit = defineEmits<{
             </div>
           </div>
 
-          <!-- 悬浮快捷操作按钮组 -->
+          <!-- 快捷操作按钮组：常显弱化档（触屏/键盘可发现），hover/focus-within 提全亮 -->
           <div class="hover-actions-group" @click.stop>
             <button
               class="action-icon-btn"
@@ -149,7 +167,7 @@ const emit = defineEmits<{
 .btn-toggle-sidebar {
   background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   color: var(--color-text-muted);
   font-size: var(--text-xs);
   width: 24px;
@@ -229,7 +247,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background var(--motion-base) ease;
   background: transparent;
@@ -246,13 +264,14 @@ const emit = defineEmits<{
 }
 
 .account-item-card.active {
-  background: var(--surface-hover);
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent);
 }
 
 .bot-avatar {
   width: 38px;
   height: 38px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
@@ -308,7 +327,7 @@ const emit = defineEmits<{
 .token-status-badge {
   font-size: var(--text-micro);
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: var(--surface-hover);
   color: var(--color-text-muted);
   flex-shrink: 0;
@@ -334,13 +353,21 @@ const emit = defineEmits<{
 }
 
 .hover-actions-group {
-  display: none;
+  display: flex;
   align-items: center;
   gap: 2px;
+  opacity: 0.6;
+  transition: opacity var(--motion-base) ease;
 }
 
-.account-item-card:hover .hover-actions-group {
-  display: flex;
+.account-item-card:hover .hover-actions-group,
+.account-item-card:focus-within .hover-actions-group {
+  opacity: 1;
+}
+
+/* 触屏无 hover：动作组恒全亮，可发现性不依赖指针悬停 */
+@media (pointer: coarse) {
+  .hover-actions-group { opacity: 1; }
 }
 
 .action-icon-btn {
@@ -348,7 +375,7 @@ const emit = defineEmits<{
   border: none;
   font-size: var(--text-sm);
   padding: 3px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   cursor: pointer;
   color: var(--color-text-muted);
   transition: background var(--motion-fast) ease;
@@ -361,5 +388,9 @@ const emit = defineEmits<{
 .action-icon-btn.danger:hover {
   background: var(--state-danger-soft);
   color: var(--state-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-actions-group { transition: none; }
 }
 </style>

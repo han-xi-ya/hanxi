@@ -101,6 +101,7 @@ vi.mock('@xterm/xterm', () => ({
       if (this.options.allowProposedApi !== true) {
         throw new Error('You must set the allowProposedApi option to true to use proposed API')
       }
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- getter 返回对象需闭包捕获 this 访问私有字段
       const self = this
       return {
         get activeVersion(): string { return self.#unicodeActive },

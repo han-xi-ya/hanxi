@@ -96,7 +96,7 @@ defineExpose({ scrollToBottom })
               <div class="file-card-preview inbound-file-card">
                 <span class="file-icon-box">📁</span>
                 <div class="file-info-group">
-                  <span class="file-main-name">{{ msg.fileName || '微信文件' }}</span>
+                  <span class="file-main-name" :title="msg.fileName || '微信文件'">{{ msg.fileName || '微信文件' }}</span>
                   <span class="file-sub-type" :title="msg.attachmentError">
                     {{ msg.downloadable ? formatFileSize(msg.fileSize) : (msg.attachmentError || '附件不可用') }}
                   </span>
@@ -203,14 +203,18 @@ defineExpose({ scrollToBottom })
               <div class="file-card-preview out">
                 <span class="file-icon-box">📁</span>
                 <div class="file-info-group">
-                  <span class="file-main-name">{{ msg.fileName || '文件附件' }}</span>
+                  <span class="file-main-name" :title="msg.fileName || '文件附件'">{{ msg.fileName || '文件附件' }}</span>
                   <span class="file-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
                 </div>
               </div>
             </template>
           </div>
           <div v-if="msg.status === 'sending'" class="msg-send-status sending">发送中…</div>
-          <div v-else-if="msg.status === 'failed'" class="msg-send-status failed" :title="msg.error">⚠️ 发送失败</div>
+          <!-- 失败原因内联直出（触屏/键盘可见，不藏 hover title）。重发动作待后端
+               提供专用 RPC 后补——现有 Send* 绑定无重发语义，不臆造。 -->
+          <div v-else-if="msg.status === 'failed'" class="msg-send-status failed">
+            ⚠️ 发送失败<template v-if="msg.error">：{{ msg.error }}</template>
+          </div>
         </div>
         <div class="msg-avatar-icon my-avatar robot-avatar-box">
           🤖
@@ -276,7 +280,7 @@ defineExpose({ scrollToBottom })
 .system-pill {
   background: var(--surface-hover);
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-element);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   display: flex;
@@ -329,6 +333,7 @@ defineExpose({ scrollToBottom })
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .bubble-column.align-right {
@@ -349,7 +354,7 @@ defineExpose({ scrollToBottom })
 
 .bubble-box {
   padding: 9px 13px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: var(--text-base);
   line-height: 1.5;
   word-break: break-word;
@@ -389,7 +394,7 @@ defineExpose({ scrollToBottom })
 }
 
 .inbound-file-card {
-  min-width: 310px;
+  min-width: min(310px, 100%);
 }
 
 .file-actions {
@@ -402,7 +407,7 @@ defineExpose({ scrollToBottom })
   border: 1px solid var(--color-border);
   background: var(--surface-panel);
   color: var(--color-text);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   padding: 4px 9px;
   font-size: var(--text-xs);
   cursor: pointer;
@@ -425,11 +430,15 @@ defineExpose({ scrollToBottom })
 .file-info-group {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .file-main-name {
   font-weight: 600;
   font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-sub-type {
@@ -531,5 +540,8 @@ defineExpose({ scrollToBottom })
 
 .msg-send-status.failed {
   color: var(--state-danger);
+  max-width: 100%;
+  word-break: break-word;
+  text-align: right;
 }
 </style>

@@ -5,8 +5,9 @@
 // 满仓裁头（保尾不保头）。
 //
 // 逐字对账后的分叉登记（刻意不统一，保留为参数或视图侧原样）：
-//  - 台账所称"三份逐字"实况为两处（frpc 抽屉 + ddns-go dd-log）；LogsView 无该阈值
-//    表达式——其刷新贴底恒无条件（无自动滚动闩），仅共用 pinToBottom 落底动作。
+//  - 台账所称"三份逐字"实况曾为两处（frpc 抽屉 + ddns-go dd-log）；LogsView 原无该
+//    阈值表达式（刷新贴底恒无条件），2026-11-12 审计 P2-9 后已收编 useLogTails 闩控
+//    （上滚脱闩/回底恢复 + 「跟随尾部」开关），三家同形制。
 //  - ANSI 剥离实况仅 frpc 一份；ddns-go/LogsView 原样直出，强加剥离会改可见文本与
 //    复制内容，不收编。
 //  - 着色词表三家互异：frpc 认 [W]/WARN/error/fail（对已剥 ANSI 的文本判定）；
@@ -39,7 +40,7 @@ export function isNearBottom(el: ScrollBottomMetrics, threshold: number = LOG_BO
   return el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
 }
 
-/** 无条件落底（LogsView 形制：刷新即贴底，不问用户是否已上翻）。 */
+/** 无条件落底（原 LogsView 形制；LogsView 已迁闩控，本函数留作纯动作原语供测试/复用）。 */
 export function pinToBottom(el: Pick<ScrollBottomMetrics, 'scrollTop' | 'scrollHeight'>): void {
   el.scrollTop = el.scrollHeight
 }

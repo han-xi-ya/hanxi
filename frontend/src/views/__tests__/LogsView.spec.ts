@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import LogsView from '../LogsView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 const appSvc = vi.hoisted(() => ({
   ListLogFiles: vi.fn(),
@@ -41,6 +42,7 @@ async function mountView() {
 afterEach(() => {
   vi.restoreAllMocks()
   useToast().clearToast()
+  useConfirm().settleConfirm(false) // 单例卫生：未裁决的确认不得泄漏到下条用例
 })
 
 describe('LogsView', () => {
@@ -93,15 +95,37 @@ describe('LogsView', () => {
     }
   })
 
-  it('清理历史：ClearLogs → toast → 重拉列表与内容', async () => {
+  it('清理历史：经 useConfirm danger 确认后 ClearLogs → toast → 重拉列表与内容', async () => {
     stubs()
+    const { confirmState, settleConfirm } = useConfirm()
     const { wrapper } = await mountView()
     const listCalls = appSvc.ListLogFiles.mock.calls.length
     await wrapper.find('.btn-danger-outline').trigger('click')
+    await nextTick()
+    // 确认待决期：按钮禁用换档，后端未动
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(wrapper.find('.btn-danger-outline').attributes('disabled')).toBeDefined()
+    expect(appSvc.ClearLogs).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flushPromises()
     expect(appSvc.ClearLogs).toHaveBeenCalled()
     expect(useToast().toastMsg.value).toBe('已清理历史日志')
     expect(appSvc.ListLogFiles.mock.calls.length).toBeGreaterThan(listCalls)
+    wrapper.unmount()
+  })
+
+  it('清理历史取消：settleConfirm(false) 后一个请求都不发', async () => {
+    stubs()
+    const { confirmState, settleConfirm } = useConfirm()
+    const { wrapper } = await mountView()
+    await wrapper.find('.btn-danger-outline').trigger('click')
+    await nextTick()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
+    await flushPromises()
+    expect(appSvc.ClearLogs).not.toHaveBeenCalled()
+    expect(wrapper.find('.btn-danger-outline').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 

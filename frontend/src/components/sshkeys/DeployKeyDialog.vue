@@ -43,6 +43,9 @@ const timeoutMs = ref<number>(DEPLOY_TIMEOUT_DEFAULT)
 const error = ref('')
 const result = ref<DeployResult | null>(null)
 const { busy: working, run } = useAsyncAction()
+// 确认待决期独立闸（JsonFmtView aiAsking 教训）：working 在 await confirm 之后才置，
+// 只靠它禁钮，弹窗期间「部署公钥」仍可点、两发竞走——先闸后问。
+const asking = ref(false)
 const { confirm } = useConfirm()
 
 // 只列有配套 .pub 的钥匙：部署装的是公钥，后端也刻意"读 .pub 文件，不读私钥"（types.go）。
@@ -53,7 +56,7 @@ const chosenPub = computed(() => props.keys.find(k => k.publicPath === pubKeyPat
 
 const formReady = computed(() =>
   pubKeyPath.value !== '' && host.value.trim() !== '' && user.value.trim() !== '' &&
-  password.value !== '' && !working.value,
+  password.value !== '' && !working.value && !asking.value,
 )
 
 watch(() => props.open, (v) => {
@@ -73,6 +76,7 @@ async function submit() {
   // 确认步：这是"真实登录尝试 + 改远端文件"的入口，只留一个显式按钮不够，
   // 还要一屏让人看清目标与公钥（PLAN_SSH_KEYS_UX §6.4 的裁断，落地在钥匙环侧
   // 同样成立）。取消/遮罩/Esc 都算否决，不发请求、口令留在原字段供改主意。
+  asking.value = true // 先闸后问：确认待决期按钮禁用，连点不叠第二发
   const accepted = await confirm({
     title: `向 ${addr} 部署公钥？`,
     tone: 'warning',
@@ -87,6 +91,7 @@ async function submit() {
       + '这个密码只用于这一次登录：不保存、不回显、发出即销毁。',
     confirmLabel: '继续，发起部署',
   })
+  asking.value = false
   if (!accepted) return
 
   const req = {
@@ -115,7 +120,7 @@ function wipeSecret() {
 }
 
 function close() {
-  if (working.value) return // 在途不换窗：一次对外写影响的回执必须看得见
+  if (working.value || asking.value) return // 在途/确认待决期不换窗：回执与确认必须有着落
   wipeSecret()
   error.value = ''
   result.value = null
@@ -199,9 +204,9 @@ function resetForRetry() {
         <div v-if="error" class="error-box">{{ error }}</div>
 
         <div class="btn-group kops-actions">
-          <button class="btn btn-secondary" :disabled="working" @click="close">取消</button>
+          <button class="btn btn-secondary" :disabled="working || asking" @click="close">取消</button>
           <button id="kops-dep-submit" class="btn btn-primary" :disabled="!formReady" @click="submit">
-            {{ working ? '⏳ 部署中…' : '部署公钥' }}
+            {{ working ? '⏳ 部署中…' : asking ? '等待确认…' : '部署公钥' }}
           </button>
         </div>
         <p class="hint-line">按钮不会替你把密码存到别处——提交一发出，本字段立即清空；成功后远端就多了一行公钥，回收需要你自己到远端删。</p>

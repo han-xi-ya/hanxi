@@ -424,7 +424,7 @@ const outLines = computed(() => {
   overflow: auto;
   background: var(--surface-page);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.5;

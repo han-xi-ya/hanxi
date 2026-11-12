@@ -183,7 +183,8 @@ function dirLeaf(dir: string): string {
   flex: none;
   border: 1px solid color-mix(in srgb, var(--tc-hue) 32%, var(--color-border));
   background: color-mix(in srgb, var(--tc-hue) 9%, var(--surface-panel));
-  overflow: hidden;
+  /* 不写 overflow:hidden——那会裁掉子钮全局 :focus-visible 外描环（P1-6）；
+     槽与子钮保持原直角形制，焦点环走每钮 inset 实色，主钮/📁副钮可区分。 */
   transition: border-color var(--motion-base) ease, background var(--motion-base) ease,
     box-shadow var(--motion-base) ease, transform var(--motion-fast) ease;
 }
@@ -195,7 +196,12 @@ function dirLeaf(dir: string): string {
 }
 .tc-launch-slot:focus-within {
   border-color: var(--tc-hue);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tc-hue) 22%, transparent);
+}
+/* 每钮各自的 inset 实色焦点环（--focus-ring 合成 ≥3:1）：主钮与目录副钮焦点清晰可分 */
+.tc-open:focus-visible,
+.tc-open-dir:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .tc-open {

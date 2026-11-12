@@ -26,6 +26,8 @@ const textModel = computed({
 })
 
 function handleKeydown(e: KeyboardEvent) {
+  // 组字豁免：中文输入法回车选词不得被当作发送（isComposing / keyCode 229 双保险）
+  if (e.isComposing || e.keyCode === 229) return
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     emit('send-text')
@@ -101,7 +103,7 @@ function formatFileSize(bytes: number): string {
     <div class="input-footer-row">
       <span class="shortcut-tip">普通文本粘贴不受影响 · 附件不会自动发送</span>
       <button class="btn-positive btn-send-message" :disabled="!modelValue.trim() || isSending" @click="emit('send-text')">
-        {{ isSending ? '发送中…' : '发送 (S)' }}
+        {{ isSending ? '发送中…' : '发送' }}
       </button>
     </div>
   </footer>
@@ -120,7 +122,7 @@ function formatFileSize(bytes: number): string {
 .paste-tip { font-size: var(--text-xs); color: var(--color-text-subtle); min-width: 0; }
 .tb-spacer { flex: 1; }
 .attachment-stage { margin: 5px 14px 7px; }
-.attachment-loading, .attachment-error, .attachment-preview-card { min-height: 58px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--surface-soft); }
+.attachment-loading, .attachment-error, .attachment-preview-card { min-height: 58px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-soft); }
 .attachment-loading { display: flex; align-items: center; padding: 10px 12px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .attachment-preview-card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 9px; }
 .attachment-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: var(--radius-chip); border: 1px solid var(--color-border); }
@@ -143,7 +145,7 @@ function formatFileSize(bytes: number): string {
 .input-footer-row { padding: 4px 14px 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .shortcut-tip { font-size: var(--text-xs); color: var(--color-text-subtle); }
 /* 配色交 .btn-positive；border/尺寸自留（未挂 .btn 基座，同 .attachment-send 理由）。 */
-.btn-send-message { border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background var(--motion-base) ease; }
+.btn-send-message { border: none; padding: 5px 16px; border-radius: var(--radius-micro); font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background var(--motion-base) ease; }
 /* 旧写法自行换成"灰底+subtle 字"，与 .attachment-send 的口径成第三套——
  * 统一走 grayscale 去饱和，绿钮禁用即去饱和灰，观感与全族一致。 */
 .btn-send-message:disabled { opacity: .75; filter: grayscale(1); cursor: not-allowed; }

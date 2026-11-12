@@ -674,7 +674,9 @@ onMounted(() => {
         <button class="btn btn-primary btn-small" @click="installZipViaDialog">安装引擎包…</button>
         <div id="ocr-import-target" class="ocr-import-drop" data-file-drop-target="true"
           role="button" tabindex="0" aria-label="拖入引擎安装包 zip 托管安装；点击可选取 zip"
-          @click="installZipViaDialog" @keydown.enter.prevent="installZipViaDialog">
+          @click="installZipViaDialog"
+          @keydown.enter.prevent="!$event.isComposing && $event.keyCode !== 229 && installZipViaDialog()"
+          @keydown.space.prevent="!$event.isComposing && $event.keyCode !== 229 && installZipViaDialog()">
           📦 推荐：把引擎安装包 <b>hanxi-ocr-&lt;engine&gt;-&lt;version&gt;.zip</b>（旁挂同名 .sha256）
           拖到这里或点「安装引擎包…」——自动识别引擎并校验落位；非当前引擎只登记，是否启动以后端安装回执为准
         </div>
@@ -688,7 +690,7 @@ onMounted(() => {
       </div>
       <div class="ocr-set-row">
         <span class="ocr-set-k">端口</span>
-        <input v-model="portInput" class="ocr-set-port" inputmode="numeric" aria-label="服务端口" />
+        <input v-model="portInput" class="text-input ocr-set-port" inputmode="numeric" aria-label="服务端口" />
         <button class="btn btn-secondary btn-small" :disabled="portBusy" @click="applyPort">应用</button>
         <label class="ocr-set-follow">
           <input type="checkbox" :checked="followOnExit" :disabled="followBusy" @change="toggleFollow(($event.target as HTMLInputElement).checked)" />
@@ -742,10 +744,12 @@ onMounted(() => {
 
         <div v-if="!image" id="ocr-image-dropzone" class="ocr-dropzone" :class="{ 'ocr-dropzone-hot': dragOver }"
           data-file-drop-target="true"
-          tabindex="0" aria-label="拖入图片、Ctrl+V 粘贴图片或按回车选择图片"
+          tabindex="0" aria-label="拖入图片、Ctrl+V 粘贴图片或按回车/空格选择图片"
           :aria-disabled="!online" @dragover.prevent="dragOver = true"
           @dragleave="dragOver = false" @drop.prevent="onDrop"
-          @paste="onPaste" @keydown.enter.prevent="online && chooseByDialog()">
+          @paste="onPaste"
+          @keydown.enter.prevent="!$event.isComposing && $event.keyCode !== 229 && online && chooseByDialog()"
+          @keydown.space.prevent="!$event.isComposing && $event.keyCode !== 229 && online && chooseByDialog()">
           <p v-if="dragOver" class="ocr-drop-hot-text">松开即载入图片</p>
           <template v-else>
             <p class="ocr-drop-title">拖入图片 · Ctrl+V 粘贴截图</p>
@@ -844,7 +848,7 @@ onMounted(() => {
 }
 .ocr-dropzone:hover, .ocr-dropzone:focus-visible { border-color: var(--color-primary); background: var(--surface-hover); }
 .ocr-dropzone:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.ocr-dropzone-hot { border-color: var(--color-primary); background: var(--primary-soft, var(--surface-hover)); }
+.ocr-dropzone-hot { border-color: var(--color-primary); background: var(--color-primary-soft); }
 .ocr-drop-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); margin: 0; }
 .ocr-drop-sub { font-size: var(--text-xs); color: var(--color-text-muted); margin: 0; }
 .ocr-drop-hot-text { font-size: var(--text-md); font-weight: 600; color: var(--color-primary); margin: 0; }
@@ -873,6 +877,8 @@ onMounted(() => {
 .ocr-line-text { color: var(--color-text); word-break: break-word; }
 .ocr-lines .link-button { opacity: 0; transition: opacity var(--motion-base) ease; }
 .ocr-lines li:hover .link-button, .ocr-lines li:focus-within .link-button { opacity: 1; }
+/* 触屏无 hover：逐行复制钮恒显，可发现性不依赖指针悬停（P2-14） */
+@media (pointer: coarse) { .ocr-lines .link-button { opacity: 1; } }
 .ocr-stale { margin-bottom: 0; }
 .ocr-retry { margin-left: 10px; }
 

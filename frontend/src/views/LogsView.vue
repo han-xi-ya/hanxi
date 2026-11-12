@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, computed, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, computed } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { LogFileInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
 import { usePolling } from '../composables/usePolling'
 import { useClipboard } from '../composables/useClipboard'
-import { pinToBottom } from '../composables/useLogTails'
+import { useLogTails } from '../composables/useLogTails'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
+const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
 
 const logFiles = shallowRef<LogFileInfo[]>([])
@@ -18,7 +20,20 @@ const loading = ref(false)
 const autoRefresh = ref(true)
 const searchKeyword = ref('')
 const maxLines = ref(300)
-const logContainerRef = ref<HTMLPreElement | null>(null)
+// 尾跟随机构收编 useLogTails 单源（frpc 抽屉/ddns-go 同形制）：用户上滚即脱闩、
+// 回底自动恢复；「跟随尾部」勾选框直绑 autoScroll，可显式强制跟尾。
+const {
+  autoScroll,
+  bodyRef: logContainerRef,
+  onBodyScroll,
+  scrollToBottom,
+} = useLogTails({ maxLines: maxLines.value })
+// 读取/列表错误常驻上下文（error-box），不只走 toast 一闪而过
+const logError = ref('')
+// 清理历史双闸（JsonFmtView aiAsking 教训）：确认待决期与执行期各锁一段，
+// 弹窗期间按钮同样禁用，连点不会叠出第二发确认或第二次删除。
+const clearAsking = ref(false)
+const clearing = ref(false)
 
 let currentRequestId = 0
 
@@ -26,15 +41,21 @@ async function loadFileList() {
   try {
     const list = await AppAPI.AppService.ListLogFiles()
     logFiles.value = list ?? []
-    if (logFiles.value.length > 0 && !selectedFile.value) {
-      selectedFile.value = logFiles.value[0].name
+    // 列表刷新后校验选中项仍在册：被清理/轮转掉的文件回落首项，列表空则置空，
+    // 不再继续读一个已不存在的文件（错误只走 toast 的旧病）。
+    const stillListed = logFiles.value.some(f => f.name === selectedFile.value)
+    const next = stillListed ? selectedFile.value : (logFiles.value[0]?.name ?? '')
+    if (next !== selectedFile.value) {
+      selectedFile.value = next
+      logContent.value = ''
     }
   } catch (err: unknown) {
-    showToast(`获取日志列表失败: ${getErrorMessage(err)}`)
+    logError.value = `获取日志列表失败: ${getErrorMessage(err)}`
+    showErrorToast(logError.value)
   }
 }
 
-async function fetchContent(scrollBottom = false) {
+async function fetchContent() {
   if (!selectedFile.value) return
   const reqId = ++currentRequestId
   const targetFile = selectedFile.value
@@ -46,23 +67,26 @@ async function fetchContent(scrollBottom = false) {
       return
     }
     logContent.value = text ?? ''
-    if (scrollBottom) {
-      // 本视图无自动滚动闩（刷新即无条件贴底），与 frpc 抽屉/ddns-go dd-log 的
-      // 闩控 scrollToBottom 系形制分叉——台账 §五-7 对账记录，此处仅共用落底动作
-      nextTick(() => {
-        const el = logContainerRef.value
-        if (el) pinToBottom(el)
-      })
-    }
+    logError.value = ''
+    // 闩控贴底：autoScroll 开才落底——自动刷新不再无条件重置滚动位，
+    // 用户上翻阅读时不被打断，回底即恢复跟随。
+    void scrollToBottom()
   } catch (err: unknown) {
     if (reqId === currentRequestId) {
-      showToast(`读取日志内容失败: ${getErrorMessage(err)}`)
+      logError.value = `读取日志内容失败: ${getErrorMessage(err)}`
+      showErrorToast(logError.value)
     }
   } finally {
     if (reqId === currentRequestId) {
       loading.value = false
     }
   }
+}
+
+// 换文件重新跟尾（新文件从头读起，跟随默认开）
+function onFileChange() {
+  autoScroll.value = true
+  void fetchContent()
 }
 
 async function copyLogs() {
@@ -83,13 +107,27 @@ async function openLogFolder() {
 }
 
 async function clearLogs() {
+  if (clearAsking.value || clearing.value) return
+  clearAsking.value = true // 先闸后问：确认弹窗期间也不许第二下点进来
   try {
+    const accepted = await confirm({
+      title: '清理历史日志？',
+      description: '将删除日志目录中当天以外的全部历史日志文件（当天的 app-<日期>.log 保留）。文件直接删除，不可恢复。',
+      tone: 'danger',
+      confirmLabel: '清理历史',
+    })
+    clearAsking.value = false
+    if (!accepted) return
+    clearing.value = true
     await AppAPI.AppService.ClearLogs()
     showToast('已清理历史日志')
     await loadFileList()
-    await fetchContent(true)
+    await fetchContent()
   } catch (err: unknown) {
-    showToast(`清理日志失败: ${getErrorMessage(err)}`)
+    showErrorToast(`清理日志失败: ${getErrorMessage(err)}`)
+  } finally {
+    clearAsking.value = false
+    clearing.value = false
   }
 }
 
@@ -101,17 +139,28 @@ const filteredLines = computed(() => {
   return lines.filter(l => l.toLowerCase().includes(kw))
 })
 
+// 空态分诊：加载/无文件/读取失败/搜索无匹配/文件本身为空，各说各的话，
+// 不再一句「暂无匹配的日志内容」混三种情况（搜索无匹配文案逐字保留，spec 钉死）。
+const emptyText = computed(() => {
+  if (loading.value) return '正在读取日志...'
+  if (logError.value) return '日志读取失败——错误详情见上方提示，可点「刷新」重试。'
+  if (logFiles.value.length === 0) return '暂无日志文件——应用运行后会自动生成，可点「目录」查看日志文件夹。'
+  if (!selectedFile.value) return '未选择日志文件'
+  if (searchKeyword.value.trim()) return '暂无匹配的日志内容'
+  return '该日志文件暂无内容'
+})
+
 // 自动刷新轮询（usePolling 内置 KeepAlive 契约；immediateFirstRun:false 保持"2.5s 后才首次周期拉取"节奏）
 usePolling(() => {
   if (autoRefresh.value && selectedFile.value) {
-    fetchContent(false)
+    fetchContent()
   }
 }, 2500, { immediateFirstRun: false })
 
 onMounted(async () => {
   await loadFileList()
   if (selectedFile.value) {
-    await fetchContent(true)
+    await fetchContent()
   }
 })
 </script>
@@ -128,7 +177,7 @@ onMounted(async () => {
     <!-- 顶部工具栏 -->
     <div class="control-panel">
       <div class="left-controls">
-        <select v-model="selectedFile" class="select-file" @change="fetchContent(true)">
+        <select v-model="selectedFile" class="select-file" @change="onFileChange">
           <option v-for="f in logFiles" :key="f.name" :value="f.name">
             {{ f.name }} ({{ (f.size / 1024).toFixed(1) }} KB)
           </option>
@@ -148,10 +197,16 @@ onMounted(async () => {
           <input v-model="autoRefresh" type="checkbox" />
           自动刷新 (2.5s)
         </label>
-        <button class="btn btn-secondary btn-small" @click="fetchContent(true)">🔄 刷新</button>
+        <label class="auto-refresh-label">
+          <input v-model="autoScroll" type="checkbox" />
+          跟随尾部
+        </label>
+        <button class="btn btn-secondary btn-small" @click="fetchContent()">🔄 刷新</button>
         <button class="btn btn-secondary btn-small" @click="copyLogs">📋 复制</button>
         <button class="btn btn-secondary btn-small" @click="openLogFolder">📂 目录</button>
-        <button class="btn btn-danger-outline btn-small" @click="clearLogs">🧹 清理历史</button>
+        <button class="btn btn-danger-outline btn-small" :disabled="clearAsking || clearing" @click="clearLogs">
+          {{ clearAsking ? '等待确认…' : clearing ? '清理中…' : '🧹 清理历史' }}
+        </button>
       </div>
     </div>
 
@@ -161,7 +216,8 @@ onMounted(async () => {
         <span class="file-name">{{ selectedFile || '未选择日志' }}</span>
         <span class="line-count">显示 {{ filteredLines.length }} 行日志</span>
       </div>
-      <pre ref="logContainerRef" class="log-content"><code v-if="filteredLines.length > 0">{{ filteredLines.join('\n') }}</code><div v-else class="empty-logs">{{ loading ? '正在读取日志...' : '暂无匹配的日志内容' }}</div></pre>
+      <div v-if="logError" class="log-error-box" role="alert">{{ logError }}</div>
+      <pre ref="logContainerRef" class="log-content" @scroll.passive="onBodyScroll"><code v-if="filteredLines.length > 0">{{ filteredLines.join('\n') }}</code><div v-else class="empty-logs">{{ emptyText }}</div></pre>
     </div>
   </section>
 </template>
@@ -288,5 +344,16 @@ onMounted(async () => {
   align-items: center;
   height: 200px;
   color: var(--terminal-faint-fg);
+}
+
+/* 常驻错误条：终端深底豁免面，前景取 --ansi-1（禁随主题 --state-* 铺深底），
+   底色走 --terminal-error-bg 派生档；字号随本区终端豁免保留裸 px。 */
+.log-error-box {
+  padding: 6px 14px;
+  background: var(--terminal-error-bg);
+  color: var(--ansi-1);
+  border-bottom: 1px solid var(--terminal-border);
+  font-size: 12px;
+  word-break: break-all;
 }
 </style>

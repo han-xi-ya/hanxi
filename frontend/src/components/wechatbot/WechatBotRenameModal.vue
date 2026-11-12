@@ -4,7 +4,9 @@
 // 受控 v-model 与父级 renameNewVal 同一 ref 双向代理。
 // 注：模态壳层 CSS 家族系 components.css 共享原子（§9.6-8，与扫码绑定模态同源），
 // 本组件 scoped 块只留 mini 卡与动作条真差异。
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
+import { DIALOG_Z, useDialogA11y } from '../../composables/useDialogA11y'
+import { useConfirm } from '../../composables/useConfirm'
 
 const props = defineProps<{
   /** 新备注名（与父级 renameNewVal 同一 ref，受控回写）。 */
@@ -22,34 +24,69 @@ const nameModel = computed({
   get: () => props.renameNewVal,
   set: (v: string) => emit('update:renameNewVal', v),
 })
+
+const titleId = 'wechat-rename-dialog-title'
+const nameId = 'wechat-rename-input'
+const dialogRef = ref<HTMLElement | null>(null)
+const nameRef = ref<HTMLInputElement | null>(null)
+const { confirmState } = useConfirm()
+
+// 本组件经视图 v-if 挂载（开着才创建）：useDialogA11y 的 watch(false) 回焦分支
+// 不会走到，回焦由 onUnmounted 承接；快照取 setup 同步期（此刻焦点还在触发钮上）。
+const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+// 焦点入窗 / Tab 困窗 / Esc 关闭走单源；z 档 underTop + escapeYield 与 KeyOpsModal
+// 同形制——确认框在场时一次 Esc 只关最上层。
+useDialogA11y({
+  open: () => true,
+  dialog: dialogRef,
+  z: DIALOG_Z.underTop,
+  escapeYield: () => confirmState.open,
+  close: () => emit('close'),
+  immediate: true,
+  focusOnOpen: () => nameRef.value?.focus(),
+})
+
+onUnmounted(() => { previousFocus?.focus() })
+
+// 组字豁免：中文输入法回车选词不得被当作保存。
+function onNameKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    emit('save')
+  }
+}
 </script>
 
 <template>
   <!-- 账号重命名模态框 (Rename Modal) -->
   <div class="custom-modal-backdrop" @click.self="emit('close')">
-    <div class="custom-modal-card mini">
+    <div ref="dialogRef" class="custom-modal-card mini" role="dialog" aria-modal="true" :aria-labelledby="titleId">
       <div class="cmodal-header">
-        <div class="cmodal-title">
-          <span>✏️</span> 修改账号备注
+        <div :id="titleId" class="cmodal-title">
+          <span aria-hidden="true">✏️</span> 修改账号备注
         </div>
-        <button class="cmodal-close" @click="emit('close')">✕</button>
+        <button class="cmodal-close" type="button" aria-label="关闭" @click="emit('close')">✕</button>
       </div>
       <div class="cmodal-body">
         <div class="form-item-block">
-          <label class="form-label">新备注名称</label>
+          <label :for="nameId" class="form-label">新备注名称</label>
           <input
+            :id="nameId"
+            ref="nameRef"
             type="text"
             v-model="nameModel"
             placeholder="输入备注名称…"
             class="form-text-input"
-            @keydown.enter="emit('save')"
+            @keydown="onNameKeydown"
           />
         </div>
         <div class="cmodal-actions-bar">
-          <button class="btn-cancel" @click="emit('close')">取消</button>
+          <button class="btn-cancel" type="button" @click="emit('close')">取消</button>
           <!-- 只挂 .btn-positive 取标准配色，刻意不挂 .btn 基座（本钮 padding 4px 14px
                比标准控件矮，挂基座会被注入 min-height 撑高）。 -->
-          <button class="btn-positive btn-submit" @click="emit('save')">确定</button>
+          <button class="btn-positive btn-submit" type="button" @click="emit('save')">确定</button>
         </div>
       </div>
     </div>

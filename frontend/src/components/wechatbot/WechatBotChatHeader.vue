@@ -18,6 +18,8 @@ const props = defineProps<{
   targetUserInput: string
   /** Context Token 刷新进行中（按钮禁用态与文案开关）。 */
   refreshingToken: boolean
+  /** 监听切换在途（per-account 闸由编排层 togglingListenerId 比对传入；缺省 false，宿主接线前不锁）。 */
+  togglingListener?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +37,15 @@ const targetUserModel = computed({
   get: () => props.targetUserInput,
   set: (v: string) => emit('update:targetUserInput', v),
 })
+
+// 组字豁免：目标用户输入框回车保存同样不得吃掉中文选词回车。
+function onTargetKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    emit('save-target')
+  }
+}
 </script>
 
 <template>
@@ -74,7 +85,7 @@ const targetUserModel = computed({
               v-model="targetUserModel"
               class="target-input-inline"
               placeholder="输入目标微信 User ID"
-              @keydown.enter="emit('save-target')"
+              @keydown="onTargetKeydown"
             />
             <!-- 只挂 .btn-positive 取标准配色与 hover，刻意**不挂 .btn 基座**：本钮是
                  header 内的微型内联件（padding 2px 7px），挂基座会被注入标准控件
@@ -99,9 +110,10 @@ const targetUserModel = computed({
       <button
         class="btn-hdr-action primary-toggle"
         :class="{ active: account.isListening }"
+        :disabled="togglingListener"
         @click="emit('toggle-listener', account)"
       >
-        {{ account.isListening ? '停止监听' : '启动监听' }}
+        {{ togglingListener ? (account.isListening ? '停止中…' : '启动中…') : (account.isListening ? '停止监听' : '启动监听') }}
       </button>
     </div>
   </header>
@@ -112,7 +124,7 @@ const targetUserModel = computed({
 .btn-expand-header {
   background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-base);
   padding: 3px 6px;
   cursor: pointer;
@@ -175,7 +187,7 @@ const targetUserModel = computed({
 .listen-badge {
   font-size: var(--text-xs);
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   background: var(--surface-hover);
   color: var(--color-text-muted);
   display: inline-flex;
@@ -223,7 +235,7 @@ const targetUserModel = computed({
 .target-input-inline {
   padding: 2px 6px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   width: 200px;
@@ -241,7 +253,7 @@ const targetUserModel = computed({
 .btn-save-inline {
   border: none;
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-xs);
   cursor: pointer;
 }
@@ -251,7 +263,7 @@ const targetUserModel = computed({
   color: var(--color-text-muted);
   border: none;
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-xs);
   cursor: pointer;
 }
@@ -282,5 +294,16 @@ const targetUserModel = computed({
   background: var(--state-positive-soft);
   border-color: var(--state-positive);
   color: var(--state-positive);
+}
+
+/* 在途禁用：灰压但不塌（grayscale+opacity 与全族口径一致），hover 不得再响应 */
+.btn-hdr-action:disabled {
+  opacity: 0.75;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+
+.btn-hdr-action:disabled:hover {
+  background: var(--surface-panel);
 }
 </style>
