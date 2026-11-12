@@ -42,9 +42,10 @@ const quickTargets: readonly { label: string; value: string }[] = [
   <div class="tool-panel">
     <div class="tool-form">
       <div class="input-wrap">
-        <span class="input-label">目标 IP / 域名:</span>
+        <label class="input-label" for="ping-target-input">目标 IP / 域名:</label>
         <input
           v-model="targetModel"
+          id="ping-target-input"
           class="text-input"
           placeholder="如 1.1.1.1、8.8.8.8 或 www.baidu.com"
           @keyup.enter="emit('run')"
@@ -58,7 +59,8 @@ const quickTargets: readonly { label: string; value: string }[] = [
           <option :value="16">16 次</option>
         </select>
       </div>
-      <button class="btn btn-primary" :disabled="runDisabled" @click="emit('run')">
+      <!-- busy 档按最长文案「Ping 探测中…」定 min-width（ch 档），换文案不抖表单行 -->
+      <button class="btn btn-primary diag-run-btn" :disabled="runDisabled" @click="emit('run')">
         {{ loading ? 'Ping 探测中…' : '发起 Ping' }}
       </button>
     </div>
@@ -73,7 +75,9 @@ const quickTargets: readonly { label: string; value: string }[] = [
   <div v-if="error" class="error-box">{{ error }}</div>
 
   <!-- Ping 结果面板 -->
-  <div v-if="result" class="diag-card">
+  <!-- 重探在飞：旧结果保留但明确标陈旧（aria-busy + 提示条），完成后提示自动移除 -->
+  <div v-if="result" class="diag-card" :aria-busy="loading || undefined">
+    <div v-if="loading" class="banner banner-info slim" role="status">⏳ 探测中，下方为上次结果</div>
     <div class="diag-summary-bar">
       <div class="summary-col">
         <span class="s-label">目标主机</span>
@@ -132,6 +136,10 @@ const quickTargets: readonly { label: string; value: string }[] = [
 /* 诊断工具皮家族共享原子（.tool-panel/.diag-card/.table-container/.status-badge）在
    components.css（§9.6-1），本层只留本面板真差异；.rtt-tag 基形与 .text-danger 走全局
    （§9.6-10 定档），不挂等值副本；fast/medium/slow 色档在家族共享件 diagRtt.css。 */
+
+/* busy 文案换宽防抖：两态取最长文案「Ping 探测中…」定 min-width（≈12.5ch，留余量取 14ch）。
+   ch 取 '0' 字形宽约 0.5em、CJK 约 1em；+30px 为 .btn 内距/边框（content-box） */
+.diag-run-btn { min-width: calc(14ch + 30px); }
 .val-warn {
   color: var(--state-danger);
 }

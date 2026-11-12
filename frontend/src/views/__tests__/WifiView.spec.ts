@@ -91,16 +91,18 @@ describe('WifiView', () => {
     w.unmount()
   })
 
-  it('"未设置密码或无法读取"走 nopass 且不显示复制按钮', async () => {
+  it('"未设置密码或无法读取"哨兵值：扫码入口禁用、不出码，title 说明密码不可读', async () => {
     qr.toString.mockResolvedValue('<svg/>')
     const w = await mountWith([{ ssid: 'Guest', password: '未设置密码或无法读取' }])
     const icons = w.findAll('.btn-icon')
-    expect(icons).toHaveLength(1) // 仅 📱
+    expect(icons).toHaveLength(1) // 仅 📱（复制钮对哨兵值隐藏）
+    // 哨兵值不可区分「未设置」与「读取失败」：入口禁用，绝不把未知当开放网络出 nopass 码
+    expect((icons[0].element as HTMLButtonElement).disabled).toBe(true)
+    expect(icons[0].attributes('title')).toContain('密码不可读')
     await icons[0].trigger('click')
     await flushMicrotasks()
-    expect(qr.toString.mock.calls[0][0]).toBe('WIFI:T:nopass;S:Guest;;')
-    // 现状：哨兵串非空，弹窗原样展示该提示语（而非「无密码」——那是空串的分支）
-    expect(w.find('.qr-info').text()).toContain('未设置密码或无法读取')
+    expect(qr.toString).not.toHaveBeenCalled()
+    expect(w.find('.modal-overlay').exists()).toBe(false)
     w.unmount()
   })
 

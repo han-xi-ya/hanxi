@@ -6,6 +6,8 @@ import type { Profile } from '../../bindings/hanxi/internal/modules/wifi/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
+import { useConfirm } from '../composables/useConfirm'
+import { DIALOG_Z, useDialogA11y } from '../composables/useDialogA11y'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -13,6 +15,10 @@ const { copyWithToast } = useClipboard()
 const loading = ref(false)
 const profiles = shallowRef<Profile[]>([])
 const errorMsg = ref('')
+
+// 后端哨兵值（netsh.go GetAllWiFiPasswords）：「未设置密码」与「读取失败」都落这一串，
+// 两者不可区分——绝不能把「读不到」当开放网络生成 nopass 连接码（有密码的网络扫码必连不上）
+const PASSWORD_UNREADABLE = '未设置密码或无法读取'
 
 // 选中的二维码弹窗数据
 const qrModal = ref<{
@@ -34,7 +40,8 @@ function escapeWifiString(str: string): string {
 
 function buildWifiQRString(ssid: string, password: string): string {
   const encSSID = escapeWifiString(ssid)
-  const isNoPassword = !password || password === '未设置密码或无法读取'
+  // 仅凭空串判开放网络；哨兵值（密码不可读）在入口已拦，不会走到这里
+  const isNoPassword = !password
   if (isNoPassword) {
     return `WIFI:T:nopass;S:${encSSID};;`
   }
@@ -57,6 +64,8 @@ async function loadProfiles() {
 
 // 展示二维码弹窗
 async function showQRCode(p: Profile) {
+  // 双保险：入口按钮已对哨兵值禁用，此处再拦一道，未知密码绝不当开放网络出码
+  if (p.password === PASSWORD_UNREADABLE) return
   try {
     const qrText = buildWifiQRString(p.ssid, p.password)
     // 墨色保本页原值（2026-10-26 审查：与 fileshare 的 #1e293b 系历史漂移，
@@ -77,6 +86,21 @@ function closeQRModal() {
   qrModal.value.visible = false
 }
 
+// 弹窗焦点/键盘契约走 useDialogA11y 单源（对齐 UiHistoryDialog 视图级口径）：
+// underTop 档（950，与本页 --z-dialog-under 互锁）强制 escapeYield——App 单例确认框
+// 在场时 Esc 让位，一次 Esc 只关最上层；KeepAlive 切页摘/补监听防幽灵关闭
+const { confirmState } = useConfirm()
+const qrDialogEl = ref<HTMLElement | null>(null)
+useDialogA11y({
+  open: () => qrModal.value.visible,
+  dialog: qrDialogEl,
+  z: DIALOG_Z.underTop,
+  close: closeQRModal,
+  escapeYield: () => confirmState.open,
+  immediate: true,
+  keepAliveRebind: true,
+})
+
 // 复制密码到剪贴板（两级回退走 useClipboard）
 async function copyPassword(p: Profile) {
   if (!p.password) return
@@ -95,7 +119,8 @@ onMounted(() => {
         <h1>WiFi 密码</h1>
         <p class="subtitle">查看本机已保存的 Wi-Fi 密码，支持手机扫码秒连</p>
       </div>
-      <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadProfiles">
+      <!-- busy 档按最长文案「刷新中…」定 min-width（ch 档），换文案不抖布局 -->
+      <button class="btn btn-secondary btn-small refresh-btn" :disabled="loading" @click="loadProfiles">
         {{ loading ? '刷新中…' : '刷新列表' }}
       </button>
     </div>
@@ -127,15 +152,18 @@ onMounted(() => {
                 <div class="actions">
                   <button
                     class="btn-icon"
-                    title="扫码连 WiFi"
+                    :disabled="p.password === PASSWORD_UNREADABLE"
+                    :title="p.password === PASSWORD_UNREADABLE ? '密码不可读，无法生成连接码' : '扫码连 WiFi'"
+                    aria-label="扫码连 WiFi"
                     @click="showQRCode(p)"
                   >
                     📱
                   </button>
                   <button
-                    v-if="p.password && p.password !== '未设置密码或无法读取'"
+                    v-if="p.password && p.password !== PASSWORD_UNREADABLE"
                     class="btn-icon"
                     title="复制密码"
+                    aria-label="复制密码"
                     @click="copyPassword(p)"
                   >
                     📋
@@ -154,12 +182,12 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 扫码连 WiFi 二维码弹窗 -->
+    <!-- 扫码连 WiFi 二维码弹窗（dialog 语义 + 焦点契约由 useDialogA11y 承接） -->
     <div v-if="qrModal.visible" class="modal-overlay" @click.self="closeQRModal">
-      <div class="modal-card">
+      <div ref="qrDialogEl" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="wifi-qr-title" tabindex="-1">
         <div class="modal-header">
-          <h3>📱 手机扫码连接 Wi-Fi</h3>
-          <button class="btn-close" @click="closeQRModal">✕</button>
+          <h3 id="wifi-qr-title">📱 手机扫码连接 Wi-Fi</h3>
+          <button class="btn-close" aria-label="关闭" @click="closeQRModal">✕</button>
         </div>
         <div class="modal-body">
           <div class="qr-container" v-html="qrModal.svg"></div>
@@ -191,6 +219,10 @@ onMounted(() => {
   flex-direction: column;
   gap: 16px;
 }
+
+/* busy 文案换宽防抖：两态取最长文案定 min-width（「刷新列表」4 全角 ≈8ch，留 1ch 余量）。
+   ch 取 '0' 字形宽约 0.5em、CJK 约 1em；+26px 为 btn-small 内距/边框（content-box） */
+.refresh-btn { min-width: calc(9ch + 26px); }
 
 /* 表格外壳：全局 .card 原子带内距与投影，不适合零内距表格容器，保留独有形状 */
 .card {
@@ -233,7 +265,7 @@ onMounted(() => {
   color: var(--color-text);
   background: var(--surface-soft);
   padding: 2px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   border: 1px dashed var(--color-border);
   user-select: all;
 }
@@ -244,10 +276,15 @@ onMounted(() => {
   font-size: var(--text-md);
   cursor: pointer;
   padding: 3px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
 }
-.btn-icon:hover {
+.btn-icon:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+/* 哨兵值禁用档：视觉与功能双禁用（.btn-icon 非 .btn 族，全局 :disabled 档染不到） */
+.btn-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* subtle 档走全局 .text-subtle（§9.6-10 名实裁决：原局部 .text-muted 色值实为 subtle 档）；
@@ -305,7 +342,7 @@ onMounted(() => {
   cursor: pointer;
   color: var(--color-text-muted);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
 }
 .btn-close:hover {
   background: var(--surface-hover);

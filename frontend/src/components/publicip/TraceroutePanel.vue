@@ -42,9 +42,10 @@ const quickTargets: readonly { label: string; value: string }[] = [
   <div class="tool-panel">
     <div class="tool-form">
       <div class="input-wrap">
-        <span class="input-label">目标 IP / 域名:</span>
+        <label class="input-label" for="traceroute-target-input">目标 IP / 域名:</label>
         <input
           v-model="targetModel"
+          id="traceroute-target-input"
           class="text-input"
           placeholder="如 1.1.1.1、8.8.8.8 或 www.taobao.com"
           @keyup.enter="emit('run')"
@@ -58,7 +59,8 @@ const quickTargets: readonly { label: string; value: string }[] = [
           <option :value="30">30 跳</option>
         </select>
       </div>
-      <button class="btn btn-primary" :disabled="runDisabled" @click="emit('run')">
+      <!-- busy 档按最长文案「正在追踪路由节点…」定 min-width（ch 档），换文案不抖表单行 -->
+      <button class="btn btn-primary diag-run-btn" :disabled="runDisabled" @click="emit('run')">
         {{ loading ? '正在追踪路由节点…' : '开始追踪' }}
       </button>
     </div>
@@ -73,7 +75,10 @@ const quickTargets: readonly { label: string; value: string }[] = [
   <div v-if="error" class="error-box">{{ error }}</div>
 
   <!-- 路由追踪结果 -->
-  <div v-if="result" class="diag-card">
+  <!-- 重探在飞：旧结果保留但明确标陈旧（aria-busy + 提示条），完成后提示自动移除；
+       traceroute 无取消入口属后端契约，本轮只补陈旧标记不加取消钮 -->
+  <div v-if="result" class="diag-card" :aria-busy="loading || undefined">
+    <div v-if="loading" class="banner banner-info slim" role="status">⏳ 探测中，下方为上次结果</div>
     <div class="diag-summary-bar">
       <div class="summary-col">
         <span class="s-label">追踪目标</span>
@@ -134,6 +139,10 @@ const quickTargets: readonly { label: string; value: string }[] = [
    components.css（§9.6-1），本层只留本面板真差异；.rtt-tag 基形与 .text-subtle 走全局
    （§9.6-10 定档），不挂等值副本；fast/medium/slow 色档在家族共享件 diagRtt.css；
    .text-warn 全局不设（该原子名仅本面板消费），留局部。 */
+
+/* busy 文案换宽防抖：两态取最长文案「正在追踪路由节点…」定 min-width（8 全角+… ≈18ch，留余量取 19ch）。
+   ch 取 '0' 字形宽约 0.5em、CJK 约 1em；+30px 为 .btn 内距/边框（content-box） */
+.diag-run-btn { min-width: calc(19ch + 30px); }
 .text-warn {
   color: var(--state-warning);
 }

@@ -161,14 +161,15 @@ function forwardCopyText(text: string, label: string) {
 
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  /* min(380px,100%)：390px 视口扣页边距后不足 380px，裸 minmax(380px) 会撑出横向滚动 */
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
   gap: 16px;
 }
 
 .ip-card {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -191,7 +192,7 @@ function forwardCopyText(text: string, label: string) {
   font-size: var(--text-sm);
   font-weight: 600;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
 }
 .card-tag.v4 {
   background: var(--state-information-soft);
@@ -241,7 +242,7 @@ function forwardCopyText(text: string, label: string) {
 .btn-copy {
   padding: 4px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   background: var(--surface-panel);
   cursor: pointer;
   font-size: var(--text-sm);

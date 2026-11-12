@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hanxi/internal/modules/portscan'
 import type { PresetGroup, PortResult, ScanProgress } from '../../bindings/hanxi/internal/modules/portscan/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { fmtDuration } from '../utils/format'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -35,6 +36,21 @@ const progressPercent = ref(0)
 const openPorts = shallowRef<PortResult[]>([])
 const durationMs = ref(0)
 const errorMessage = ref('')
+// 终止标记：进度卡终态如实显示「已终止 · X/Y（部分结果）」，不再伪装 100% 全量成功
+const scanCancelled = ref(false)
+// 结果归属快照：扫描完成后改目标输入框，Target 徽标与「🌐 打开」仍对准本轮扫描的主机
+const scannedTarget = ref('')
+// 已终止任务 ID：后端 cancel 后的排空窗口仍可能推残余进度，按 taskId 精确作废，
+// 避免旧任务推流倒灌重开的新扫描（新任务 taskId 不同）
+let cancelledTaskId = ''
+
+// 空态文案分档：在飞 / 已终止 / 扫完零开放 / 从未扫描，不再共用一句「点击开始扫描」
+const emptyHint = computed(() => {
+  if (scanning.value) return '正在扫描中，请稍候...'
+  if (scanCancelled.value) return '扫描已终止，未探测到开放端口（部分结果）'
+  if (progressTotal.value > 0) return `扫描完成：${progressTotal.value} 个端口均未开放`
+  return '暂无扫描结果，在上方输入目标并点击「开始扫描」'
+})
 
 // 代理输入防抖定时器（非轮询，业务级防抖保留自管 + 卸载清理）
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -44,8 +60,8 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // 手动刷新可让两发在途并存在飞——快回的直连结果会被晚到的旧代理结果倒灌覆盖。
 // 只认最新一发：seq 门禁下旧响应连 detectingIP 都不许替新请求摘帽。
 let egressSeq = 0
-// 扫描任务代次：终止后 StartScan RPC 仍在途（后端 cancel→快速返回），用户即刻
-// 重开新扫描时，上一轮 summary/异常/finally 不得倒灌新轮的开关与结果表。
+// 扫描任务代次：终止/新扫描即递增，上一轮 summary/异常/finally/推流全部作废，
+// 不得倒灌新轮的开关与结果表，也不得把已终止的进度卡伪装成 100% 完成。
 let scanSeq = 0
 
 function onModeChange() {
@@ -111,6 +127,9 @@ async function startScan() {
   progressTotal.value = 0
   progressPercent.value = 0
   durationMs.value = 0
+  scanCancelled.value = false
+  // 目标快照在发起时定格：结果徽标与「🌐 打开」不再读实时输入框
+  scannedTarget.value = target.value.trim()
   scanning.value = true
   const seq = ++scanSeq
 
@@ -144,6 +163,10 @@ async function startScan() {
 async function stopScan() {
   try {
     await PortScanAPI.PortScanService.StopScan(currentTaskId.value || 'current')
+    // 先递增代次作废在途回包与残余推流，再摘帽：否则 StartScan 迟到回包会把进度强写 100%
+    scanSeq++
+    scanCancelled.value = true
+    cancelledTaskId = currentTaskId.value
     scanning.value = false
     showToast('已终止扫描')
   } catch (err: unknown) {
@@ -159,7 +182,7 @@ async function copyOpenPorts() {
 }
 
 function openInBrowser(port: number) {
-  const host = target.value.trim() === '0.0.0.0' ? '127.0.0.1' : target.value.trim()
+  const host = scannedTarget.value === '0.0.0.0' ? '127.0.0.1' : scannedTarget.value
   const proto = (port === 443 || port === 8443) ? 'https' : 'http'
   window.open(`${proto}://${host}:${port}`, '_blank')
 }
@@ -187,7 +210,9 @@ watch(proxyUrl, () => {
 
 // 后端流式进度推送（setup 期订阅 + 自动注销；开放端口增量去重、按端口号升序）
 useWailsEvent<ScanProgress>('portscan:progress', (p) => {
-  if (!p) return
+  // 非扫描态不入账（终止后冻结部分结果）；已终止任务的残余推流（后端 cancel 后的
+  // 排空窗口）按 taskId 黑名单作废，不得倒灌重开的新扫描
+  if (!p || !scanning.value || p.taskId === cancelledTaskId) return
   // 进度字段无条件覆盖（不做 ?? 旧值兜底：0 值也必须如实落地）
   currentTaskId.value = p.taskId
   progressScanned.value = p.scanned
@@ -235,10 +260,11 @@ onUnmounted(() => {
       <div class="section-card control-card">
         <div class="input-grid">
           <div class="form-group">
-            <label>目标主机 / IP</label>
+            <label for="portscan-target-input">目标主机 / IP</label>
             <div class="target-input-row">
               <input
                 v-model="target"
+                id="portscan-target-input"
                 type="text"
                 class="input target-input"
                 placeholder="如 127.0.0.1, 192.168.1.1, baidu.com"
@@ -249,9 +275,10 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group span-2">
-            <label>端口范围 (支持逗号隔开与连字符区间)</label>
+            <label for="portscan-port-range-input">端口范围 (支持逗号隔开与连字符区间)</label>
             <input
               v-model="portRange"
+              id="portscan-port-range-input"
               type="text"
               class="input"
               placeholder="如 80,443,3000-3010,8080"
@@ -357,9 +384,11 @@ onUnmounted(() => {
 
       <div v-if="scanning || progressTotal > 0" class="progress-card">
         <div class="progress-info">
-          <span>扫描进度：<strong>{{ progressScanned }}</strong> / {{ progressTotal }} ({{ progressPercent }}%)</span>
+          <!-- 终态如实呈现：终止就是部分结果，不写 100% 伪装全量成功 -->
+          <span v-if="scanCancelled">已终止 · <span class="mono">{{ progressScanned }}/{{ progressTotal }}</span>（部分结果）</span>
+          <span v-else>扫描进度：<strong>{{ progressScanned }}</strong> / {{ progressTotal }} ({{ progressPercent }}%)</span>
           <span>已发现开放端口：<strong class="highlight-open">{{ openPorts.length }}</strong></span>
-          <span v-if="durationMs > 0" class="duration-tag">耗时: {{ durationMs }}ms</span>
+          <span v-if="durationMs > 0" class="duration-tag mono">耗时: {{ fmtDuration(durationMs / 1000) }}</span>
         </div>
         <UiProgressBar :percent="progressPercent" />
       </div>
@@ -369,7 +398,7 @@ onUnmounted(() => {
         <div class="card-header">
           <div class="header-left">
             <h2>开放端口列表 ({{ openPorts.length }})</h2>
-            <span v-if="openPorts.length > 0" class="badge-tag">Target: {{ target }}</span>
+            <span v-if="openPorts.length > 0" class="badge-tag">Target: {{ scannedTarget }}</span>
             <span v-if="openPorts.length > 0 && currentEgressIP" class="badge-tag source-tag">Source IP: {{ currentEgressIP }}</span>
           </div>
           <div class="header-actions" v-if="openPorts.length > 0">
@@ -424,8 +453,8 @@ onUnmounted(() => {
               <tr v-if="openPorts.length === 0">
                 <td colspan="6" class="empty-cell">
                   <div class="empty-state">
-                    <span class="empty-icon">{{ scanning ? '⏳' : '🔍' }}</span>
-                    <p>{{ scanning ? '正在高速扫描中，请稍候...' : '暂无扫描结果，在上方输入目标并点击「开始扫描」' }}</p>
+                    <span class="empty-icon">{{ scanning ? '⏳' : (scanCancelled ? '⏹' : '🔍') }}</span>
+                    <p>{{ emptyHint }}</p>
                   </div>
                 </td>
               </tr>
@@ -492,8 +521,8 @@ onUnmounted(() => {
 .indicator-label { color: var(--color-text-muted); }
 .indicator-ip { font-family: var(--font-mono); color: var(--color-primary); display: flex; align-items: center; gap: 6px; }
 .indicator-loading { color: var(--color-text-subtle); font-size: var(--text-xs); }
-.proxy-badge { background: var(--state-positive-soft); color: var(--state-positive); font-size: var(--text-micro); padding: 1px 5px; border-radius: 3px; font-weight: 600; }
-.direct-badge { background: var(--surface-hover); color: var(--color-text-muted); font-size: var(--text-micro); padding: 1px 5px; border-radius: 3px; }
+.proxy-badge { background: var(--state-positive-soft); color: var(--state-positive); font-size: var(--text-micro); padding: 1px 5px; border-radius: var(--radius-micro); font-weight: 600; }
+.direct-badge { background: var(--surface-hover); color: var(--color-text-muted); font-size: var(--text-micro); padding: 1px 5px; border-radius: var(--radius-micro); }
 .btn-refresh {
   background: transparent; border: none; cursor: pointer; color: var(--color-text-muted);
   font-size: var(--text-md); padding: 0 2px; line-height: 1; transition: color var(--motion-base);
@@ -516,10 +545,11 @@ onUnmounted(() => {
 
 /* 进度卡片 */
 .progress-card {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
 }
-.progress-info { display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--color-text-muted); }
+/* tabular-nums：计数/百分比每拍刷新不抖宽（.mono 段自带等宽，此处兜住比例字体段） */
+.progress-info { display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .highlight-open { color: var(--state-positive); font-size: var(--text-base); }
 .duration-tag { color: var(--color-text-subtle); }
 /* 进度条轨/填充形制由公共件 UiProgressBar 承担，本视图不挂副本 */
@@ -539,7 +569,7 @@ onUnmounted(() => {
 .service-tag { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600; color: var(--state-information); }
 .banner-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .banner-text { font-size: var(--text-sm); color: var(--color-text); font-family: var(--font-mono); }
-.fp-badge { font-size: var(--text-micro); background: var(--surface-hover); color: var(--color-text-subtle); padding: 1px 6px; border-radius: 4px; }
+.fp-badge { font-size: var(--text-micro); background: var(--surface-hover); color: var(--color-text-subtle); padding: 1px 6px; border-radius: var(--radius-micro); }
 .latency-tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
 /* .text-muted 走全局原子（§9.6-10 muted 派定档），本视图不挂副本 */
 

@@ -144,17 +144,18 @@ onMounted(() => {
     <!-- 顶部操作栏 -->
     <div class="control-panel">
       <div class="form-item">
-        <label>目标网段 / IP 范围:</label>
+        <label for="lan-cidr-input">目标网段 / IP 范围:</label>
         <div class="input-combo-wrap">
           <input
             v-model="selectedCidr"
+            id="lan-cidr-input"
             type="text"
             :disabled="scanning"
             class="input-box"
             placeholder="如 192.168.1.0/24 或 100.94.178.1-100"
             @keydown.enter="startScan"
           />
-          <select :disabled="scanning" class="select-addon" @change="onSelectSubnet">
+          <select :disabled="scanning" class="select-addon" aria-label="选择网卡快捷网段" @change="onSelectSubnet">
             <option value="" disabled selected>选择网卡快捷网段…</option>
             <option v-for="s in subnets" :key="s.cidr" :value="s.cidr">
               {{ s.name }} ({{ s.ip }}) - {{ s.cidr }}
@@ -231,8 +232,10 @@ onMounted(() => {
                   @blur="saveRemark(dev)"
                 />
               </div>
-              <div
+              <!-- 真 button：键盘可达（Enter/Space 原生触发），焦点环由全局 :focus-visible 接管 -->
+              <button
                 v-else
+                type="button"
                 class="remark-display"
                 :class="{ 'has-remark': Boolean(dev.remark) }"
                 title="点击修改备注"
@@ -241,7 +244,7 @@ onMounted(() => {
                 <span v-if="dev.remark" class="remark-text">{{ dev.remark }}</span>
                 <span v-else class="remark-placeholder">+ 添加备注</span>
                 <span class="edit-icon">✎</span>
-              </div>
+              </button>
             </td>
             <td>
               <span class="rtt-tag" :class="dev.rttMs < 20 ? 'fast' : (dev.rttMs < 500 ? 'normal' : 'slow')">
@@ -344,7 +347,7 @@ onMounted(() => {
 .helper-tag {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   padding: 2px 8px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
@@ -371,7 +374,7 @@ onMounted(() => {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .progress-meta {
@@ -379,6 +382,8 @@ onMounted(() => {
   justify-content: space-between;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+  /* 计数每拍刷新不抖宽 */
+  font-variant-numeric: tabular-nums;
 }
 
 .found-badge {
@@ -390,12 +395,13 @@ onMounted(() => {
 
 /* 表格展示：.tbl 基样式与 th/td 内距、表头底色走 components.css 全局标准形
    （旧 10px 14px 宽内距与 page 色表头系 ±2px 内差异，已删）；
-   外壳本地只留 overflow:hidden 真差（全局 :where(.table-container) 为 overflow-x:auto）。 */
+   外壳横向滚动与全局 :where(.table-container) 同档——固定列宽合计约 870px，
+   窄窗必须可滚，overflow:hidden 会裁掉右侧列（圆角由 border-radius 自带裁切）。 */
 .table-container {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: hidden;
+  border-radius: var(--radius-control);
+  overflow-x: auto;
 }
 
 .row-self {
@@ -423,7 +429,11 @@ onMounted(() => {
   gap: 6px;
   cursor: pointer;
   padding: 3px 6px;
-  border-radius: 4px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  border-radius: var(--radius-micro);
   transition: background var(--motion-base) ease;
   max-width: 100%;
 }
@@ -445,11 +455,13 @@ onMounted(() => {
 .edit-icon {
   font-size: var(--text-xs);
   color: var(--color-text-subtle);
-  opacity: 0;
+  /* 常显低透明度：编辑入口不许 hover-only 才可发现（触屏/键盘无 hover） */
+  opacity: 0.55;
   transition: opacity var(--motion-base) ease;
 }
 
-.remark-display:hover .edit-icon {
+.remark-display:hover .edit-icon,
+.remark-display:focus-visible .edit-icon {
   opacity: 1;
 }
 
@@ -463,7 +475,7 @@ onMounted(() => {
   padding: 4px 8px;
   font-size: var(--text-base);
   border: 1px solid var(--color-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   outline: none;
   background: var(--surface-panel);
   box-shadow: 0 0 0 2px var(--focus-ring);
@@ -472,7 +484,7 @@ onMounted(() => {
 /* .rtt-tag 基形（mono + 600 + sm）在全局定档（§9.6-10）；本视图只留色块档补差（padding/圆角） */
 .rtt-tag {
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
 }
 .rtt-tag.fast {
   background: var(--state-positive-soft);
@@ -490,7 +502,7 @@ onMounted(() => {
 .btn-action {
   padding: 3px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   background: var(--surface-panel);
   cursor: pointer;
   font-size: var(--text-sm);

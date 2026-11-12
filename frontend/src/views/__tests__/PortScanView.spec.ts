@@ -130,7 +130,7 @@ describe('PortScanView 扫描链路', () => {
       expect.objectContaining({ target: '127.0.0.1', timeoutMs: 800, concurrency: 20, deepDetect: true }),
     )
     expect(w.find('.progress-info').text()).toContain('11 / 11 (100%)')
-    expect(w.find('.duration-tag').text()).toContain('2333ms')
+    expect(w.find('.duration-tag').text()).toContain('耗时: 00:02') // fmtDuration(2333ms) → 秒档 mm:ss
     const rows = w.findAll('.tbl tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('nginx')
@@ -277,13 +277,14 @@ describe('PortScanView 扫描链路', () => {
     const rows = w.findAll('.tbl tbody tr')
     expect(rows).toHaveLength(1)
     expect(rows[0].text()).toContain('3000')
-    expect(w.find('.duration-tag').text()).toContain('55ms')
+    expect(w.find('.duration-tag').text()).toContain('耗时: 00:00') // fmtDuration(55ms) → 秒档 mm:ss
     w.unmount()
   })
 
-  it('终止扫描：携带事件回传的 taskId 调 StopScan', async () => {
+  it('终止扫描：携带 taskId 调 StopScan；终态「已终止·部分结果」不写 100%，迟到 summary 与残余推流全部作废', async () => {
     stubDefaults()
-    svc.StartScan.mockReturnValue(new Promise(() => {}))
+    const { promise, resolve } = Promise.withResolvers<unknown>()
+    svc.StartScan.mockReturnValue(promise)
     svc.StopScan.mockResolvedValue(undefined)
     const w = mountView()
     await flushMicrotasks()
@@ -295,6 +296,24 @@ describe('PortScanView 扫描链路', () => {
     await flushMicrotasks()
     expect(svc.StopScan).toHaveBeenCalledWith('task-42')
     expect(useToast().toastMsg.value).toBe('已终止扫描')
+    // 终态如实呈现部分结果：不写 100%、不伪装全量成功
+    expect(w.find('.progress-info').text()).toContain('已终止 · 1/5（部分结果）')
+    expect(w.find('.progress-info').text()).not.toContain('(100%)')
+    expect(w.find('.ui-progress-inner').attributes('style')).toContain('width: 20%')
+    // 迟到的 StartScan 回包整段作废：不得把进度强写 100% 或倒灌结果
+    resolve({
+      openPorts: [{ port: 8080, status: 'open', service: 'http', banner: 'stale', fingerprint: '', latencyMs: 9 }],
+      durationMs: 900,
+      totalPorts: 5,
+    })
+    await flushMicrotasks()
+    expect(w.text()).not.toContain('stale')
+    expect(w.find('.progress-info').text()).toContain('已终止 · 1/5（部分结果）')
+    expect(w.find('.ui-progress-inner').attributes('style')).toContain('width: 20%')
+    // 已终止任务的残余推流（后端 cancel 排空窗口）同样作废
+    runtime.handlers['portscan:progress']({ data: { taskId: 'task-42', scanned: 4, total: 5, percent: 80 } })
+    await nextTick()
+    expect(w.find('.progress-info').text()).toContain('已终止 · 1/5（部分结果）')
     w.unmount()
   })
 

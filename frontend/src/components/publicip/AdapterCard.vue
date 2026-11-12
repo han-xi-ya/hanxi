@@ -108,7 +108,7 @@ const emit = defineEmits<{
 .adapter-card {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -188,7 +188,7 @@ const emit = defineEmits<{
   background: var(--surface-page);
   border: 1px solid var(--color-border);
   padding: 3px 8px;
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
 }
 
@@ -238,7 +238,7 @@ const emit = defineEmits<{
   background: var(--surface-page);
   border: 1px solid var(--color-border);
   padding: 4px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
 }
 
@@ -264,7 +264,7 @@ const emit = defineEmits<{
   color: var(--state-warning);
   background: var(--state-warning-soft);
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-micro);
 }
 
 .muted-text {

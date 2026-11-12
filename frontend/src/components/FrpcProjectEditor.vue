@@ -5,6 +5,9 @@ import type { Project, ProxyRule } from '../../bindings/hanxi/internal/domain/mo
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import { getErrorMessage } from '../utils/errors'
+import { useConfirm } from '../composables/useConfirm'
+import { usePrompt } from '../composables/usePrompt'
+import { DIALOG_Z, useDialogA11y } from '../composables/useDialogA11y'
 
 const props = defineProps<{
   project: Project | null
@@ -137,6 +140,22 @@ const batchForm = reactive({
   remotePorts: '', // 支持 9080-9085 或 9080,9081,9082
 })
 const batchError = ref('')
+
+// 批量弹窗焦点/键盘契约走 useDialogA11y 单源（对齐 UiHistoryDialog 视图级口径）：
+// underTop 档（950）强制 escapeYield——App 单例确认框/输入框在场时 Esc 让位，
+// 一次 Esc 只关最上层；KeepAlive 切页摘/补监听防幽灵关闭
+const { confirmState } = useConfirm()
+const { promptState } = usePrompt()
+const batchDialogEl = ref<HTMLElement | null>(null)
+useDialogA11y({
+  open: () => batchModalOpen.value,
+  dialog: batchDialogEl,
+  z: DIALOG_Z.underTop,
+  close: () => { batchModalOpen.value = false },
+  escapeYield: () => confirmState.open || promptState.open,
+  immediate: true,
+  keepAliveRebind: true,
+})
 
 function newProxy(): EditableProxy {
   return toEditable({
@@ -407,11 +426,16 @@ function isDraftValid(): boolean {
     if (!r.name.trim()) { errorMsg.value = '存在未命名的规则'; return false }
     if (r.role === 'visitor') {
       if (!r.serverName.trim()) { errorMsg.value = `访客规则「${r.name}」必须指定目标服务端服务名 (serverName)`; return false }
+      // secretKey 标了必填星号就要真校验：空密钥能保存、启动才失败是病灶
+      if (!r.secretKey.trim()) { errorMsg.value = `访客规则「${r.name}」必须填写访问密钥 (secretKey)`; return false }
       if (!r.bindPort || r.bindPort < 1 || r.bindPort > 65535) { errorMsg.value = `访客规则「${r.name}」的本地监听端口 (bindPort) 无效`; return false }
     } else {
       if (!r.localPort || r.localPort < 1 || r.localPort > 65535) { errorMsg.value = `规则「${r.name}」的本地端口无效`; return false }
       if ((r.type === 'tcp' || r.type === 'udp') && (!r.remotePort || r.remotePort < 1 || r.remotePort > 65535)) {
         errorMsg.value = `规则「${r.name}」的公网远程端口 (remotePort) 无效`; return false
+      }
+      if ((r.type === 'stcp' || r.type === 'xtcp') && !r.secretKey.trim()) {
+        errorMsg.value = `规则「${r.name}」必须填写安全共享密钥 (secretKey)`; return false
       }
     }
   }
@@ -646,7 +670,8 @@ function cancel() { emit('cancel') }
                   </label>
                   <label class="form-item">
                     <span>访问密钥 (secretKey) <em>*</em></span>
-                    <input v-model="r.secretKey" class="input" type="password" placeholder="需与对端一致" />
+                    <!-- 与服务端侧 secretKey 同形制：明文（密钥需两端逐字核对，password 遮罩反而碍事） -->
+                    <input v-model="r.secretKey" class="input" placeholder="需与对端一致" />
                   </label>
                   <label class="form-item">
                     <span>本地监听 IP (bindAddr)</span>
@@ -769,10 +794,10 @@ function cancel() { emit('cancel') }
 
     <!-- 批量端口生成 Modal -->
     <div v-if="batchModalOpen" class="modal-backdrop" @click.self="batchModalOpen = false">
-      <div class="modal-card">
+      <div ref="batchDialogEl" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="frpc-batch-title" tabindex="-1">
         <div class="modal-head">
-          <h3>批量生成端口规则</h3>
-          <button class="btn-close" @click="batchModalOpen = false">✕</button>
+          <h3 id="frpc-batch-title">批量生成端口规则</h3>
+          <button class="btn-close" aria-label="关闭" @click="batchModalOpen = false">✕</button>
         </div>
         <div v-if="batchError" class="error-box" style="margin-bottom: 12px;">{{ batchError }}</div>
         <div class="modal-body">
@@ -852,7 +877,8 @@ function cancel() { emit('cancel') }
   font-size: var(--text-base); background: var(--surface-panel); color: var(--color-text); width: 100%;
   box-sizing: border-box;
 }
-.input:focus { border-color: var(--color-primary); outline: none; }
+/* 勿恢复 outline:none：scoped 会压死全局 :focus-visible 键盘焦点环；:focus 只留换色边 */
+.input:focus { border-color: var(--color-primary); }
 
 /* 旧 scoped .btn-text/.btn-adv-toggle 手搓链接钮已删除，模板改挂全局 .link-button（§9.3 惯例） */
 
@@ -907,9 +933,10 @@ function cancel() { emit('cancel') }
 
 .footer-actions { display: flex; justify-content: flex-end; gap: 12px; padding: 12px 0 24px; }
 
-/* Modal 弹窗 */
+/* Modal 弹窗：视图级对话框层 --z-dialog-under(950)，与 useDialogA11y 的 DIALOG_Z.underTop
+   互锁——1000 档只留 App 单例确认框/输入框，叠放不再拼 DOM 序（同 WifiView/UiHistoryDialog 口径） */
 .modal-backdrop {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: var(--z-dialog-under);
   background: var(--overlay-mask);
   display: flex; align-items: center; justify-content: center;
 }

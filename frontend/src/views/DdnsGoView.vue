@@ -82,13 +82,17 @@ useWailsEvent<Snapshot>('ddnsgo:instance-state', (s) => {
 const listenPort = ref(9876)
 const portInput = ref(9876)
 const portDirty = computed(() => String(portInput.value) !== String(listenPort.value))
+// 校验错误就地显示在输入旁（toast 只作辅助回执，不再作唯一反馈）
+const portError = ref('')
 
 async function applyPort() {
   const n = Number(portInput.value)
   if (!Number.isInteger(n) || n < 1024 || n > 65535) {
-    showToast('端口需为 1024~65535 的整数')
+    portError.value = '端口需为 1024~65535 的整数'
+    showToast(portError.value)
     return
   }
+  portError.value = ''
   try {
     const res = await adapter.port.set(n)
     listenPort.value = n
@@ -171,10 +175,12 @@ onMounted(async () => {
       <div class="extras-card">
         <div class="extras-row">
           <span class="port-ctrl">
-            <span class="hint-dim">Web 监听端口</span>
-            <input v-model.number="portInput" class="dd-port-input mono" type="number" min="1024" max="65535" />
+            <label class="hint-dim" for="ddnsgo-port-input">Web 监听端口</label>
+            <input id="ddnsgo-port-input" v-model.number="portInput" class="dd-port-input mono" type="number" min="1024" max="65535" :aria-describedby="portError ? 'ddnsgo-port-error' : undefined" />
             <button class="btn btn-secondary btn-small" :disabled="!portDirty || busy" @click="applyPort">应用</button>
           </span>
+          <!-- 就地校验反馈：错误留在输入旁直到改对，不再只弹瞬时 toast -->
+          <span v-if="portError" id="ddnsgo-port-error" class="dl-error" role="alert">{{ portError }}</span>
         </div>
       </div>
     </template>

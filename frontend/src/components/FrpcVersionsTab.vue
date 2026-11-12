@@ -196,7 +196,7 @@ onMounted(() => {
 
     <!-- 已安装版本 -->
     <div class="section-title"><h3>已安装二进制版本 ({{ installed.length }})</h3></div>
-    <div v-if="installed.length === 0" class="empty-hint">尚未安装任何 frp 版本 — 从下方远程列表下载，或导入本地 frpc.exe</div>
+    <div v-if="installed.length === 0 && !loading" class="empty-hint">尚未安装任何 frp 版本 — 从下方远程列表下载，或导入本地 frpc.exe</div>
     <div class="installed-grid">
       <div v-for="v in installed" :key="v.version" class="installed-card">
         <div class="inst-card-top">
@@ -253,7 +253,7 @@ onMounted(() => {
             </td>
             <td>
               <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-                <div class="dl-bar-wrap">
+                <div class="dl-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="stepOf(downloading[rel.version]!)" aria-label="下载进度">
                   <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
                 </div>
                 <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
@@ -278,7 +278,7 @@ onMounted(() => {
             </td>
           </tr>
           <tr v-if="releases.length === 0 && !loading">
-            <td colspan="6" class="empty-hint">无法加载远程版本列表（GitHub 或被墙/限流），可尝试右上角"刷新远程列表"，或直接导入本地 frpc.exe</td>
+            <td colspan="6" class="empty-hint">{{ errorMsg ? '远程版本列表加载失败——可点击右上角"刷新远程列表"重试，或直接导入本地 frpc.exe' : '暂无远程发布版本——可点击右上角"刷新远程列表"，或直接导入本地 frpc.exe' }}</td>
           </tr>
         </tbody>
       </table>
@@ -309,8 +309,8 @@ onMounted(() => {
 /* .mono 落回全局标准形，本表仅留截断变体： */
 .mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 表格（.tbl 全局原子接管；.table-container 留局部系 overflow 口径真差） */
-.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
+/* 表格（.tbl 全局原子接管；宽表在自身容器内横向滚动，overflow-x:auto 防窄窗裁列） */
+.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 
 /* .dl-bar-wrap/.dl-bar-inner 与全局原子逐字同形，副本已删净落回 */
 .muted-text { color: var(--color-text-subtle); }

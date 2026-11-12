@@ -31,7 +31,8 @@ const { form, credOpen, optsOpen, timeoutMs, skipTls, result, error, checking, t
         <span class="check-colon" aria-hidden="true">:</span>
         <input v-model.number="form.port" type="number" min="1" max="65535" class="input check-port" aria-label="代理端口" :disabled="checking" />
       </div>
-      <button class="btn btn-secondary" :disabled="checking" @click="test">
+      <!-- busy 档按最长文案「⏳ 测试中…」定 min-width（ch 档），换文案不抖主行 -->
+      <button class="btn btn-secondary proxy-test-btn" :disabled="checking" @click="test">
         {{ checking ? '⏳ 测试中…' : '🧪 测试' }}
       </button>
     </div>
@@ -135,4 +136,10 @@ const { form, credOpen, optsOpen, timeoutMs, skipTls, result, error, checking, t
   </div>
 </template>
 
+
+<style scoped>
+/* busy 文案换宽防抖：两态取最长文案「⏳ 测试中…」定 min-width（≈10.5ch，留余量取 12ch）。
+   ch 取 '0' 字形宽约 0.5em、CJK 约 1em；+30px 为 .btn 内距/边框（content-box） */
+.proxy-test-btn { min-width: calc(12ch + 30px); }
+</style>
 <style scoped src="./portscanPanels.css"></style>

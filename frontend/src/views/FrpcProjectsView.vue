@@ -14,10 +14,13 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
 import { useConfirm } from '../composables/useConfirm'
 import { useClipboard } from '../composables/useClipboard'
+import { usePrompt } from '../composables/usePrompt'
+import { DIALOG_Z, useDialogA11y } from '../composables/useDialogA11y'
 import { createWarnMatcher, FRPC_LOG_WARN_RE, stripAnsi, useLogTails } from '../composables/useLogTails'
 
 const { showToast } = useToast()
-const { confirm } = useConfirm()
+const { confirm, confirmState } = useConfirm()
+const { promptState } = usePrompt()
 const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：projects = 项目列表，versions = 版本管理
@@ -45,6 +48,20 @@ const importModalOpen = ref(false)
 const importType = ref<'link' | 'toml'>('link')
 const importContent = ref('')
 const importError = ref('')
+
+// 导入弹窗焦点/键盘契约走 useDialogA11y 单源（对齐 UiHistoryDialog 视图级口径）：
+// underTop 档（950）强制 escapeYield——App 单例确认框/输入框在场时 Esc 让位，
+// 一次 Esc 只关最上层；KeepAlive 切页摘/补监听防幽灵关闭
+const importDialogEl = ref<HTMLElement | null>(null)
+useDialogA11y({
+  open: () => importModalOpen.value,
+  dialog: importDialogEl,
+  z: DIALOG_Z.underTop,
+  close: () => { importModalOpen.value = false },
+  escapeYield: () => confirmState.open || promptState.open,
+  immediate: true,
+  keepAliveRebind: true,
+})
 
 // 日志抽屉（perf 改造：接收期预处理 + 按帧批量入表，见 flushLogPending 注记；
 // 自动滚动闩/贴底阈值/裁头公式/落底滚动等机构收编 useLogTails 单源，台账 §五-7）
@@ -618,8 +635,9 @@ onMounted(async () => {
                 <button class="btn btn-danger-outline btn-small" @click="toggleStart(p)">■ 停止</button>
               </template>
               <template v-else>
+                <!-- busy 档按最长文案「启动中…」定 min-width（ch 档），换文案不抖卡片行 -->
                 <button
-                  class="btn btn-primary btn-small"
+                  class="btn btn-primary btn-small proj-start-btn"
                   :disabled="starting.has(p.id) || stateOf(p)?.state === 'starting'"
                   @click="toggleStart(p)"
                 >{{ starting.has(p.id) || stateOf(p)?.state === 'starting' ? '启动中…' : '▶ 启动' }}</button>
@@ -637,10 +655,10 @@ onMounted(async () => {
 
     <!-- 导入弹窗 -->
     <div v-if="importModalOpen" class="modal-backdrop" @click.self="importModalOpen = false">
-      <div class="modal-card">
+      <div ref="importDialogEl" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="frpc-import-title" tabindex="-1">
         <div class="modal-head">
-          <h3>导入 frpc 配置</h3>
-          <button class="btn-close" @click="importModalOpen = false">✕</button>
+          <h3 id="frpc-import-title">导入 frpc 配置</h3>
+          <button class="btn-close" aria-label="关闭" @click="importModalOpen = false">✕</button>
         </div>
         <div v-if="importError" class="error-box" style="margin: 12px 20px 0;">{{ importError }}</div>
         <div class="modal-body">
@@ -741,7 +759,7 @@ onMounted(async () => {
 .proj-server { display: flex; align-items: center; justify-content: space-between; background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 10px; }
 .server-addr { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
 .server-flags { display: flex; gap: 4px; }
-.flag { font-size: var(--text-micro); padding: 1px 6px; border-radius: 3px; background: var(--state-information-soft); color: var(--state-information); }
+.flag { font-size: var(--text-micro); padding: 1px 6px; border-radius: var(--radius-micro); background: var(--state-information-soft); color: var(--state-information); }
 
 .proj-proxies { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .proxies-label { font-weight: 600; }
@@ -760,7 +778,7 @@ onMounted(async () => {
 }
 .ep-left { display: flex; align-items: center; gap: 6px; min-width: 80px; }
 .ep-badge {
-  font-size: var(--text-micro); font-weight: 600; padding: 1px 5px; border-radius: 3px;
+  font-size: var(--text-micro); font-weight: 600; padding: 1px 5px; border-radius: var(--radius-micro);
   background: var(--surface-hover); color: var(--color-text-muted);
 }
 .ep-badge.http, .ep-badge.https { background: var(--state-information-soft); color: var(--state-information); }
@@ -791,10 +809,15 @@ onMounted(async () => {
 .proj-error { font-size: var(--text-sm); color: var(--state-danger); background: var(--state-danger-soft); border: 1px solid var(--state-danger-glow); border-radius: var(--radius-control); padding: 6px 10px; }
 
 .proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--color-border); padding-top: 12px; flex-wrap: wrap; }
+/* busy 文案换宽防抖：两态取最长文案「启动中…」定 min-width（3 全角+… ≈8ch，留 1ch 余量）。
+   ch 取 '0' 字形宽约 0.5em、CJK 约 1em；+26px 为 btn-small 内距/边框（content-box） */
+.proj-start-btn { min-width: calc(9ch + 26px); }
 
-/* 导入 Modal 弹窗（富内容手搓件，UiModal 收编属 §9.7-下轮候选；颜色已 token 化） */
+/* 导入 Modal 弹窗（富内容手搓件，UiModal 收编属 §9.7-下轮候选；颜色已 token 化）。
+   视图级对话框层 --z-dialog-under(950)，与 useDialogA11y 的 DIALOG_Z.underTop 互锁——
+   1000 档只留 App 单例确认框/输入框，叠放不再拼 DOM 序（同 WifiView/UiHistoryDialog 口径） */
 .modal-backdrop {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: var(--z-dialog-under);
   background: var(--overlay-mask);
   display: flex; align-items: center; justify-content: center;
 }
@@ -851,7 +874,9 @@ onMounted(async () => {
 .log-drawer-tools { display: flex; align-items: center; gap: 8px; }
 .auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--terminal-meta-fg); cursor: pointer; }
 .auto-scroll input { accent-color: var(--color-primary); }
-.log-error { padding: 6px 16px; background: var(--terminal-error-bg); color: var(--state-danger); font-size: 12px; }
+/* 固定深底终端区前景走终端色板 --ansi-1（同 .log-warn 用 --terminal-warn 先例）：
+   随主题 --state-danger 浅色深红铺深底对比约 2:1 不可读 */
+.log-error { padding: 6px 16px; background: var(--terminal-error-bg); color: var(--ansi-1); font-size: 12px; }
 .log-body {
   flex: 1; overflow-y: auto; padding: 12px 16px;
   font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
