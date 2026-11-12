@@ -79,7 +79,7 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
 .inbox-item {
   background: var(--surface-soft);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
@@ -113,12 +113,12 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
 }
 
 .workspace-body > .tab-content > .card {
-  border-radius: 12px;
+  border-radius: var(--radius-element);
   box-shadow: none;
 }
 
 .inbox-item {
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 /* 空态居中/虚线卡基形由全局 .empty-state 承担，本块有效差仅加大号 44px 内距档
@@ -127,7 +127,7 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
   padding: 44px 20px;
   background: var(--surface-panel);
   border: 1px dashed var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-element);
 }
 
 .empty-state h3 {

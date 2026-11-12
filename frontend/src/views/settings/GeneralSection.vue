@@ -9,7 +9,7 @@ import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import PageHeader from '../../components/ui/PageHeader.vue'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 
 const autoStart = ref(false)
 const minimizeToTray = ref(true)
@@ -26,12 +26,12 @@ async function refresh() {
     minimizeToTray.value = gen.minimizeToTray
     logRetainDays.value = gen.logRetainDays || 7
   } catch (e: unknown) {
-    showToast(`获取常规设置失败: ${getErrorMessage(e)}`)
+    showErrorToast(`获取常规设置失败: ${getErrorMessage(e)}`)
   }
   try {
     historyOcrFull.value = await HistoryAPI.GetOcrFullText()
   } catch (e: unknown) {
-    showToast(`获取历史档位失败: ${getErrorMessage(e)}`)
+    showErrorToast(`获取历史档位失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -42,8 +42,21 @@ async function toggleHistoryOcrFull(v: boolean) {
     showToast(v ? '识别历史将收录全文（下次识别起效）' : '识别历史只记路径与摘要（下次识别起效）')
   } catch (e: unknown) {
     historyOcrFull.value = !v
-    showToast(`保存历史档位失败: ${getErrorMessage(e)}`)
+    showErrorToast(`保存历史档位失败: ${getErrorMessage(e)}`)
   }
+}
+
+/** 数字框 clamp：越界/清空先写回 [min,max] 再落盘，杜绝「所见非所存」
+ *（Number()||fallback 会把 0 静默改写落盘而输入框仍显 0）。 */
+function clampNumber(value: number | string, min: number, max: number, fallback: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, Math.trunc(n)))
+}
+
+function onLogRetainChange() {
+  logRetainDays.value = clampNumber(logRetainDays.value, 1, 90, 7)
+  void updateGeneralSettings()
 }
 
 async function updateGeneralSettings() {
@@ -52,11 +65,11 @@ async function updateGeneralSettings() {
     await AppAPI.AppService.SetGeneralSettings({
       autoStart: autoStart.value,
       minimizeToTray: minimizeToTray.value,
-      logRetainDays: Number(logRetainDays.value) || 7,
+      logRetainDays: clampNumber(logRetainDays.value, 1, 90, 7),
     })
     showToast('常规偏好设置已更新')
   } catch (e: unknown) {
-    showToast(`保存设置失败: ${getErrorMessage(e)}`)
+    showErrorToast(`保存设置失败: ${getErrorMessage(e)}`)
     // 回滚刷新
     await refresh()
   } finally {
@@ -100,9 +113,10 @@ onMounted(refresh)
         <span class="setting-main">
           <span class="setting-name">脱敏运行日志保留天数</span>
           <span class="setting-desc">自动清理过期日志文件，避免长期运行占用过多磁盘空间（1–90 天）</span>
+          <span v-if="logRetainDays < 1 || logRetainDays > 90" class="range-hint" role="alert">超出 1–90 范围，保存时将修正到边界</span>
         </span>
         <span class="input-inline">
-          <input type="number" v-model.number="logRetainDays" @change="updateGeneralSettings" min="1" max="90" class="input-number" />
+          <input type="number" v-model.number="logRetainDays" @change="onLogRetainChange" min="1" max="90" class="input-number" />
           <span class="input-unit">天</span>
         </span>
       </div>
@@ -117,4 +131,8 @@ onMounted(refresh)
    （行内编辑框本体）未上收全局，收了的漏染风险见 components.css 同段注记 */
 .input-inline { display: flex; align-items: center; gap: 6px; }
 .input-number { width: 64px; }
+/* 越界即时反馈：交互后仍不合法才描边（:user-invalid 不扰未触碰的框），
+   焦点环仍归 base.css 全局 :focus-visible */
+.input-number:user-invalid { border-color: var(--state-danger); }
+.range-hint { font-size: var(--text-xs); color: var(--state-danger); }
 </style>

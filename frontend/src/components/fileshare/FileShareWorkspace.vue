@@ -18,6 +18,8 @@ defineProps<{
   endpoints: NetworkEndpoint[]
   /** 端点二维码 SVG 缓存 (url -> svg)。 */
   qrMap: Record<string, string>
+  /** 二维码生成失败 Map (url -> 错误文本)；命中即卡片出失败·重试。 */
+  qrErrors: Record<string, string>
   /** 投递箱条目（视图侧 dropInbox）。 */
   inbox: DropItem[]
   /** 传输审计事件（视图侧 transferLogs，最新 50 条）。 */
@@ -29,9 +31,26 @@ const emit = defineEmits<{
   copyContent: [content: string]
   deleteDrop: [id: string]
   clearInbox: []
+  retryQr: []
 }>()
 
 const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
+
+// APG tab 模式：方向键循环切换并聚焦（roving tabindex 已在钮上），
+// Home/End 落首尾；点击切换语义不变
+const TAB_ORDER = ['endpoints', 'inbox', 'logs'] as const
+function onTabKeydown(e: KeyboardEvent) {
+  const i = TAB_ORDER.indexOf(activeTab.value)
+  let next = -1
+  if (e.key === 'ArrowRight') next = (i + 1) % TAB_ORDER.length
+  else if (e.key === 'ArrowLeft') next = (i - 1 + TAB_ORDER.length) % TAB_ORDER.length
+  else if (e.key === 'Home') next = 0
+  else if (e.key === 'End') next = TAB_ORDER.length - 1
+  if (next < 0) return
+  e.preventDefault()
+  activeTab.value = TAB_ORDER[next]
+  document.getElementById(`fs-tab-${TAB_ORDER[next]}`)?.focus()
+}
 </script>
 
 <template>
@@ -41,32 +60,41 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
         <div class="section-kicker">LIVE WORKSPACE</div>
         <h2 class="section-title">访问与传输中心</h2>
       </div>
-      <nav class="tab-nav" aria-label="快传工作区">
-        <button type="button" class="tab-item" :class="{ active: activeTab === 'endpoints' }" @click="activeTab = 'endpoints'">
+      <div class="tab-nav" role="tablist" aria-label="快传工作区">
+        <button type="button" role="tab" id="fs-tab-endpoints" aria-controls="fs-panel-endpoints" class="tab-item" :class="{ active: activeTab === 'endpoints' }" :aria-selected="activeTab === 'endpoints'" :tabindex="activeTab === 'endpoints' ? 0 : -1" @click="activeTab = 'endpoints'" @keydown="onTabKeydown($event)">
           接入点 <span class="tab-count">{{ endpoints.length }}</span>
         </button>
-        <button type="button" class="tab-item" :class="{ active: activeTab === 'inbox' }" @click="activeTab = 'inbox'">
+        <button type="button" role="tab" id="fs-tab-inbox" aria-controls="fs-panel-inbox" class="tab-item" :class="{ active: activeTab === 'inbox' }" :aria-selected="activeTab === 'inbox'" :tabindex="activeTab === 'inbox' ? 0 : -1" @click="activeTab = 'inbox'" @keydown="onTabKeydown($event)">
           投递箱 <span class="tab-count">{{ inbox.length }}</span>
         </button>
-        <button type="button" class="tab-item" :class="{ active: activeTab === 'logs' }" @click="activeTab = 'logs'">
+        <button type="button" role="tab" id="fs-tab-logs" aria-controls="fs-panel-logs" class="tab-item" :class="{ active: activeTab === 'logs' }" :aria-selected="activeTab === 'logs'" :tabindex="activeTab === 'logs' ? 0 : -1" @click="activeTab = 'logs'" @keydown="onTabKeydown($event)">
           传输审计 <span class="tab-count">{{ logs.length }}</span>
         </button>
-      </nav>
+      </div>
     </div>
 
     <div class="workspace-body">
-      <!-- 接入点与二维码卡片 -->
+      <!-- 接入点与二维码卡片（tabpanel 语义经单根 fallthrough 落在 .tab-content 上，
+           保持 .workspace-body > .tab-content > .card 既有级联不变） -->
       <FileShareEndpointsTab
         v-if="activeTab === 'endpoints'"
+        id="fs-panel-endpoints"
+        role="tabpanel"
+        aria-labelledby="fs-tab-endpoints"
         :is-running="isRunning"
         :endpoints="endpoints"
         :qr-map="qrMap"
+        :qr-errors="qrErrors"
         @copy="emit('copyUrl', $event)"
+        @retry-qr="emit('retryQr')"
       />
 
       <!-- 跨端投递箱 -->
       <FileShareInboxTab
-        v-if="activeTab === 'inbox'"
+        v-else-if="activeTab === 'inbox'"
+        id="fs-panel-inbox"
+        role="tabpanel"
+        aria-labelledby="fs-tab-inbox"
         :items="inbox"
         @copy="emit('copyContent', $event)"
         @remove="emit('deleteDrop', $event)"
@@ -74,7 +102,13 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
       />
 
       <!-- 实时传输审计日志 -->
-      <FileShareLogsTab v-if="activeTab === 'logs'" :logs="logs" />
+      <FileShareLogsTab
+        v-else
+        id="fs-panel-logs"
+        role="tabpanel"
+        aria-labelledby="fs-tab-logs"
+        :logs="logs"
+      />
     </div>
   </section>
 </template>
@@ -90,7 +124,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   overflow-x: auto;
   background: var(--surface-soft);
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .tab-item {
@@ -100,7 +134,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   flex: 0 0 auto;
   padding: 7px 11px;
   white-space: nowrap;
-  border-radius: 7px;
+  border-radius: var(--radius-chip);
   background: none;
   border: none;
   font-size: var(--text-base);
@@ -139,7 +173,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   overflow: hidden;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel);
 }
 
@@ -167,7 +201,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   font-size: var(--text-micro);
   text-align: center;
   background: var(--surface-hover);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .workspace-body {

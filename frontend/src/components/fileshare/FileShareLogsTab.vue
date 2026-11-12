@@ -81,7 +81,7 @@ defineProps<{
 }
 
 .workspace-body > .tab-content > .card {
-  border-radius: 12px;
+  border-radius: var(--radius-element);
   box-shadow: none;
 }
 
@@ -89,7 +89,7 @@ defineProps<{
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--color-border);
-  border-radius: 9px;
+  border-radius: var(--radius-control);
 }
 
 .tbl {
@@ -102,7 +102,7 @@ defineProps<{
   padding: 44px 20px;
   background: var(--surface-panel);
   border: 1px dashed var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-element);
 }
 
 .empty-state h3 {

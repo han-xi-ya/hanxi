@@ -41,7 +41,7 @@ import type { TrayMenuOption } from '../../../bindings/hanxi/internal/app/models
 import type { TrayMenuItem } from '../../../bindings/hanxi/internal/settings/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
-import AppIcon from '../ui/AppIcon.vue'
+import { useConfirm } from '../../composables/useConfirm'
 
 const props = withDefaults(defineProps<{
   /** 编辑账目：'tray'=托盘右键菜单（默认，设置页宿主）；'wheel'=轮盘独立账。 */
@@ -111,12 +111,15 @@ function clearSelection() {
 }
 defineExpose({ locate, clearSelection })
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
+const { confirm } = useConfirm()
 
 // —— 实时保存状态机（防抖/合流/回滚）——
 const TEXT_DEBOUNCE_MS = 800
 
 const trayLoading = ref(true)
+// 加载失败位：失败不得冒充「尚未配置」空账——错误面板 + 重试与真空态分离
+const loadError = ref('')
 const trayOptions = ref<TrayMenuOption[]>([])
 const trayItems = ref<TrayMenuItem[]>([])
 const autosaving = ref(false)
@@ -205,13 +208,15 @@ async function loadMenu() {
   saveBlockHint.value = null
   selectedRow.value = null
   openGroup.value = -1
+  loadError.value = ''
   trayLoading.value = true
   try {
     const [opts, items] = await Promise.all([svc.ListTrayMenuOptions(), fetchMenu()])
     trayOptions.value = opts ?? []
     trayItems.value = (items ?? []).map(i => ({ ...i }))
   } catch (e: unknown) {
-    showToast(`获取${scopeWord.value}配置失败: ${getErrorMessage(e)}`)
+    loadError.value = getErrorMessage(e)
+    showErrorToast(`获取${scopeWord.value}配置失败: ${getErrorMessage(e)}`)
   } finally {
     trayLoading.value = false
   }
@@ -335,7 +340,21 @@ function moveItem(i: number, delta: number) {
   saveNow()
 }
 
-function removeItem(i: number) {
+async function removeItem(i: number) {
+  const item = trayItems.value[i]
+  // 分组含子条目时移除=级联删光子条目与改名且不可恢复：走 danger 确认明示条数；
+  // 空分组与叶子行保持即删（原语义）
+  const kids = item.type === 'group' ? (item.children?.length ?? 0) : 0
+  if (kids > 0) {
+    const accepted = await confirm({
+      title: `移除分组「${item.label?.trim() || '未命名分组'}」？`,
+      description: `该分组下的 ${kids} 个子条目将一并移除，自定义名称同时丢弃；此操作不可恢复。`,
+      confirmLabel: '移除分组',
+      tone: 'danger',
+      details: [{ label: '子条目', value: `${kids} 个` }],
+    })
+    if (!accepted) return
+  }
   trayItems.value.splice(i, 1)
   openGroup.value = -1
   selectedRow.value = null
@@ -377,6 +396,12 @@ function addExe() {
 <template>
   <div class="tray-editor">
     <div v-if="trayLoading" class="state-box">正在加载{{ scopeWord }}配置…</div>
+
+    <!-- 加载失败：整面错误态 + 重试，不渲染「尚未配置」假空账与编辑面 -->
+    <div v-else-if="loadError" class="state-box state-error">
+      加载{{ scopeWord }}配置失败：{{ loadError }}
+      <button class="state-action" @click="loadMenu">重试</button>
+    </div>
 
     <template v-else>
       <!-- 当前菜单条目（顺序即右键菜单/轮盘显示顺序；group 行可展开子条目编辑） -->
@@ -435,7 +460,7 @@ function addExe() {
             </div>
             <div v-if="!(item.children?.length)" class="tray-child-empty">分组还没有子条目（补全前自动保存暂缓，空分组直接保存也会被拒绝）：从下方添加。</div>
             <div class="tray-child-add">
-              <select class="tray-input tray-child-select" v-model="childPick[i]">
+              <select class="tray-input tray-child-select" v-model="childPick[i]" aria-label="从候选条目选择子条目">
                 <option value="" disabled>从候选条目选择…</option>
                 <option v-for="opt in candidateOptions" :key="`${opt.type}|${opt.ref}`" :value="`${opt.type}|${opt.ref}`">
                   {{ opt.label }}{{ opt.moduleName ? `（${opt.moduleName}）` : '' }}
@@ -483,12 +508,12 @@ function addExe() {
       <div class="exe-form">
         <span class="exe-form-title">添加外部程序</span>
         <div class="exe-form-row">
-          <input class="tray-input tray-exe-path" v-model="exeForm.path" placeholder="程序绝对路径，如 C:\Tools\app.exe 或桌面快捷方式 .lnk" />
+          <input class="tray-input tray-exe-path" v-model="exeForm.path" aria-label="程序路径" placeholder="程序绝对路径，如 C:\Tools\app.exe 或桌面快捷方式 .lnk" />
           <button class="btn btn-secondary btn-small" :disabled="pickingExe" @click="browseExe"><AppIcon name="folder" :size="14" /> 浏览…</button>
         </div>
         <div class="exe-form-row">
-          <input class="tray-input tray-exe-args" v-model="exeForm.args" placeholder="启动参数（可选，空格分隔，引号可包空格）" />
-          <input class="tray-input tray-exe-label" v-model="exeForm.label" placeholder="菜单名称（可选）" maxlength="30" />
+          <input class="tray-input tray-exe-args" v-model="exeForm.args" aria-label="启动参数" placeholder="启动参数（可选，空格分隔，引号可包空格）" />
+          <input class="tray-input tray-exe-label" v-model="exeForm.label" aria-label="菜单名称" placeholder="菜单名称（可选）" maxlength="30" />
           <button class="btn btn-secondary btn-small" @click="addExe"><AppIcon name="plus" :size="14" /> 添加</button>
         </div>
       </div>
@@ -531,7 +556,7 @@ function addExe() {
 .tray-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .tray-tag {
   font-size: var(--text-micro); color: var(--color-text-muted); background: var(--surface-hover);
-  padding: 1px 6px; border-radius: 4px; white-space: nowrap; border: 1px solid var(--color-border);
+  padding: 1px 6px; border-radius: var(--radius-micro); white-space: nowrap; border: 1px solid var(--color-border);
 }
 .tray-tag-command { color: var(--color-primary); border-color: var(--color-primary); }
 .tray-tag-group { color: var(--color-primary); border-color: var(--color-primary); }
@@ -597,7 +622,7 @@ function addExe() {
   display: grid;
   place-items: center;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: var(--surface-panel);
   transition: border-color var(--motion-base), background-color var(--motion-base);
 }

@@ -29,7 +29,7 @@ import SettingsModal from './SettingsModal.vue'
 import SnapshotFileList from './SnapshotFileList.vue'
 import SnapshotTimeline from './SnapshotTimeline.vue'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 const { confirm } = useConfirm()
 
 const status = ref<StatusInfo | null>(null)
@@ -59,7 +59,13 @@ const intervalMinutes = ref(5)
 const previewRev = ref<Revision | null>(null)
 const previewFiles = ref<RevisionFile[]>([])
 const previewDetail = ref<FilePreview | null>(null)
+// 预览弹窗内容加载只罩 preview-pane，清单常驻（整窗塌成一行会丢上下文）
 const previewLoading = ref(false)
+// 预览弹窗两段各自的失败位：清单读失败 ≠ 真空版本；内容读失败 ≠ 无内容
+const previewError = ref('')
+const previewFileError = ref('')
+const previewFileLoading = ref(false)
+const previewRetryFile = ref<RevisionFile | null>(null)
 
 const backupMode = computed(() => !!status.value && status.value.mode === 'backup')
 
@@ -107,7 +113,7 @@ async function refresh() {
     // 两模式统一读面：备份模式的 revisions/文件清单为相邻清单差集读时算
     revisions.value = (await SnapshotAPI.CheckpointService.ListRevisions()) ?? []
   } catch (e: unknown) {
-    showToast(`获取历史版本状态失败: ${getErrorMessage(e)}`)
+    showErrorToast(`获取历史版本状态失败: ${getErrorMessage(e)}`)
   } finally {
     loading.value = false
   }
@@ -120,24 +126,42 @@ async function loadFiles() {
   try {
     trackedFiles.value = (await SnapshotAPI.CheckpointService.ListFiles()) ?? []
   } catch (e: unknown) {
-    showToast(`读取受保文件清单失败: ${getErrorMessage(e)}`)
+    showErrorToast(`读取受保文件清单失败: ${getErrorMessage(e)}`)
   } finally {
     filesLoading.value = false
   }
+}
+
+/** 数字框 clamp：越界/清空先写回 [min,max] 再落盘，杜绝「所见非所存」
+ *（Number()||fallback 会把 0 静默改写落盘而输入框仍显 0）。 */
+function clampNumber(value: number | string, min: number, max: number, fallback: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, Math.trunc(n)))
+}
+
+function onIdleChange() {
+  idleSeconds.value = clampNumber(idleSeconds.value, 30, 86400, 300)
+  void savePrefs()
+}
+
+function onIntervalChange() {
+  intervalMinutes.value = clampNumber(intervalMinutes.value, 1, 1440, 5)
+  void savePrefs()
 }
 
 async function savePrefs() {
   const res = await runPrefs(async () => {
     await SnapshotAPI.CheckpointService.SetPreferences({
       enabled: enabled.value,
-      idleSeconds: Number(idleSeconds.value) || 300,
-      intervalMinutes: Number(intervalMinutes.value) || 5,
+      idleSeconds: clampNumber(idleSeconds.value, 30, 86400, 300),
+      intervalMinutes: clampNumber(intervalMinutes.value, 1, 1440, 5),
     })
     showToast('历史版本偏好已更新')
     status.value = await SnapshotAPI.CheckpointService.GetStatus()
   })
   if (!res.ok) {
-    showToast(`保存失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`保存失败: ${getErrorMessage(res.error)}`)
     await refresh()
   }
 }
@@ -159,7 +183,7 @@ async function snapshotNow() {
     if (selectedPath.value) await selectFile(selectedPath.value)
   })
   if (!res.ok) {
-    showToast(`快照失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`快照失败: ${getErrorMessage(res.error)}`)
   }
 }
 
@@ -167,7 +191,7 @@ async function openBackupDir() {
   try {
     await SnapshotAPI.CheckpointService.OpenHistoryDir()
   } catch (e: unknown) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+    showErrorToast(`打开目录失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -175,32 +199,48 @@ async function openPreview(rev: Revision) {
   previewRev.value = rev
   previewFiles.value = []
   previewDetail.value = null
+  previewError.value = ''
+  previewFileError.value = ''
+  previewRetryFile.value = null
   previewLoading.value = true
   try {
     previewFiles.value = (await SnapshotAPI.CheckpointService.RevisionDetail(rev.id)) ?? []
   } catch (e: unknown) {
-    showToast(`读取版本内容失败: ${getErrorMessage(e)}`)
+    previewError.value = getErrorMessage(e)
+    showErrorToast(`读取版本内容失败: ${getErrorMessage(e)}`)
   } finally {
     previewLoading.value = false
   }
+}
+
+/** 预览弹窗清单重试：只重跑 RevisionDetail，不动已选内容与弹窗开合。 */
+async function retryPreview() {
+  if (!previewRev.value || previewLoading.value) return
+  await openPreview(previewRev.value)
 }
 
 function closePreview() {
   previewRev.value = null
   previewFiles.value = []
   previewDetail.value = null
+  previewError.value = ''
+  previewFileError.value = ''
+  previewRetryFile.value = null
 }
 
-async function showFileContent(file: RevisionFile) {
-  if (!previewRev.value) return
-  previewLoading.value = true
+async function showFileContent(file: RevisionFile | null) {
+  if (!file || !previewRev.value || previewFileLoading.value) return
+  previewRetryFile.value = file
+  previewFileError.value = ''
+  previewFileLoading.value = true
   try {
     previewDetail.value = await SnapshotAPI.CheckpointService.PreviewFile(previewRev.value.id, file.path)
   } catch (e: unknown) {
-    showToast(`预览失败: ${getErrorMessage(e)}`)
+    previewFileError.value = getErrorMessage(e)
     previewDetail.value = null
+    showErrorToast(`预览失败: ${getErrorMessage(e)}`)
   } finally {
-    previewLoading.value = false
+    previewFileLoading.value = false
   }
 }
 
@@ -241,7 +281,7 @@ async function selectFile(path: string) {
     history.value = list
   } catch (e: unknown) {
     if (seq !== historySeq) return
-    showToast(`读取文件历史失败: ${getErrorMessage(e)}`)
+    showErrorToast(`读取文件历史失败: ${getErrorMessage(e)}`)
   } finally {
     if (seq === historySeq) historyLoading.value = false
   }
@@ -264,7 +304,7 @@ async function toggleDiff(row: FileRevision) {
     diffData.value = d
   } catch (e: unknown) {
     if (seq !== diffSeq) return
-    showToast(`读取对比失败: ${getErrorMessage(e)}`)
+    showErrorToast(`读取对比失败: ${getErrorMessage(e)}`)
     diffOpen.value = ''
   } finally {
     if (seq === diffSeq) diffLoading.value = false
@@ -313,7 +353,7 @@ async function runRestore(path: string, target: FileRevision) {
     await refresh()
     if (selectedPath.value) await selectFile(selectedPath.value)
   } catch (e: unknown) {
-    showToast(`恢复失败: ${getErrorMessage(e)}`)
+    showErrorToast(`恢复失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -330,7 +370,7 @@ async function restoreOne(file: RevisionFile) {
     try {
       hist = (await SnapshotAPI.CheckpointService.FileHistory(file.path, REVISION_WINDOW)) ?? []
     } catch (e: unknown) {
-      showToast(`读取文件历史失败: ${getErrorMessage(e)}`)
+      showErrorToast(`读取文件历史失败: ${getErrorMessage(e)}`)
       return
     }
     const t = resolveRestoreTarget(hist)
@@ -363,7 +403,7 @@ async function restoreOne(file: RevisionFile) {
     showToast(isHotRestore(file.path) ? '便签已热恢复' : '已写回磁盘，重启 Hanxi 后生效')
     await refresh()
   } catch (e: unknown) {
-    showToast(`恢复失败: ${getErrorMessage(e)}`)
+    showErrorToast(`恢复失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -391,9 +431,10 @@ onMounted(refresh)
         <span class="setting-main">
           <span class="setting-name">空闲阈值</span>
           <span class="setting-desc">数据静默该秒数后自动留版本（30–86400）</span>
+          <span v-if="idleSeconds < 30 || idleSeconds > 86400" class="range-hint" role="alert">超出 30–86400 范围，保存时将修正到边界</span>
         </span>
         <span class="input-inline">
-          <input v-model.number="idleSeconds" type="number" class="input-number" min="30" max="86400" :disabled="savingPrefs" @change="savePrefs" />
+          <input v-model.number="idleSeconds" type="number" class="input-number" min="30" max="86400" :disabled="savingPrefs" @change="onIdleChange" />
           <span class="input-unit">秒</span>
         </span>
       </div>
@@ -402,9 +443,10 @@ onMounted(refresh)
         <span class="setting-main">
           <span class="setting-name">最小快照间隔</span>
           <span class="setting-desc">两次留版本的最小间隔，防止连环保存灌碎历史（1–1440 分钟）</span>
+          <span v-if="intervalMinutes < 1 || intervalMinutes > 1440" class="range-hint" role="alert">超出 1–1440 范围，保存时将修正到边界</span>
         </span>
         <span class="input-inline">
-          <input v-model.number="intervalMinutes" type="number" class="input-number" min="1" max="1440" :disabled="savingPrefs" @change="savePrefs" />
+          <input v-model.number="intervalMinutes" type="number" class="input-number" min="1" max="1440" :disabled="savingPrefs" @change="onIntervalChange" />
           <span class="input-unit">分钟</span>
         </span>
       </div>
@@ -493,13 +535,18 @@ onMounted(refresh)
 
     <!-- 预览弹窗：版本文件清单 → 点选看内容 → 单文件恢复。骨架收口 SettingsModal
          （与 AiSection 向导同族壳），内容三段宿主自撰 -->
-    <SettingsModal v-if="previewRev" :width="680" @close="closePreview">
+    <SettingsModal v-if="previewRev" :width="680" :title="`版本 ${previewRev.id.slice(0, 8)} 预览`" @close="closePreview">
         <template #head>
           <h3>版本 {{ previewRev.id.slice(0, 8) }} · {{ fmtTime(previewRev.time) }}</h3>
         </template>
-          <div v-if="previewLoading" class="hist-empty">读取中…</div>
-          <template v-else>
-            <div class="file-list">
+          <!-- 清单常驻：内容加载/失败只罩 preview-pane 区域，不塌整窗丢上下文 -->
+          <div class="file-list">
+            <div v-if="previewLoading && !previewFiles.length" class="hist-empty" role="status">正在读取文件清单…</div>
+            <div v-else-if="previewError" class="state-box state-error">
+              读取版本内容失败：{{ previewError }}
+              <button class="state-action" @click="retryPreview">重试</button>
+            </div>
+            <template v-else>
               <div v-for="f in previewFiles" :key="f.path" class="file-row" :class="{ active: previewDetail?.path === f.path }">
                 <span class="file-st" :class="`st-${f.status}`">{{ statusLabels[f.status] ?? f.status }}</span>
                 <code class="file-path" :title="f.path">{{ f.path }}</code>
@@ -511,15 +558,22 @@ onMounted(refresh)
                 </span>
               </div>
               <div v-if="!previewFiles.length" class="hist-empty">该版本没有可展示的受保文件。</div>
+            </template>
+          </div>
+          <div v-if="previewFileLoading" class="preview-pane">
+            <div class="hist-empty" role="status">正在读取文件内容…</div>
+          </div>
+          <div v-else-if="previewFileError" class="state-box state-error">
+            预览文件内容失败：{{ previewFileError }}
+            <button class="state-action" @click="showFileContent(previewRetryFile)">重试</button>
+          </div>
+          <div v-else-if="previewDetail" class="preview-pane">
+            <div class="preview-head">
+              <code>{{ previewDetail.path }}</code>
+              <span v-if="previewDetail.truncated" class="chip chip-warning preview-cut">已截断（{{ previewDetail.size }} 字节）</span>
             </div>
-            <div v-if="previewDetail" class="preview-pane">
-              <div class="preview-head">
-                <code>{{ previewDetail.path }}</code>
-                <span v-if="previewDetail.truncated" class="chip chip-warning preview-cut">已截断（{{ previewDetail.size }} 字节）</span>
-              </div>
-              <pre class="preview-body">{{ previewDetail.content }}</pre>
-            </div>
-          </template>
+            <pre class="preview-body">{{ previewDetail.content }}</pre>
+          </div>
         <template #actions>
           <button class="btn btn-secondary" @click="closePreview">关闭</button>
         </template>
@@ -536,6 +590,10 @@ onMounted(refresh)
 .pref-list { margin-bottom: 16px; }
 .input-inline { display: flex; align-items: center; gap: 6px; }
 .input-number { width: 72px; }
+/* 越界即时反馈：键盘/指针交互后仍不合法才描边（:user-invalid 不扰未触碰的框），
+   焦点环仍归 base.css 全局 :focus-visible */
+.input-number:user-invalid { border-color: var(--state-danger); }
+.range-hint { font-size: var(--text-xs); color: var(--state-danger); }
 .dir-path {
   max-width: 520px; display: inline-block; vertical-align: middle;
 }

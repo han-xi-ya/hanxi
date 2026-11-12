@@ -14,11 +14,13 @@ import { useAsyncAction } from '../../composables/useAsyncAction'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 const { prompt } = usePrompt()
 const { confirm } = useConfirm()
 
 const appInfo = ref<AppInfo | null>(null)
+// 数据根读取失败位：失败不得冒充「正在读取」永久 chip——chip 改可点重试
+const appInfoError = ref('')
 // 换绑/解绑单飞件走 run 通道（busy 名位；两钮共享同一实例互斥——在飞时另一钮
 // 由 disabled 挡住，run 的「操作进行中」重入分支不可达）。
 const { busy, run: runBindDir } = useAsyncAction()
@@ -72,10 +74,12 @@ function dirIntent(name?: string): string {
 const VERSIONS_ROW_INTENT = '该软件的托管版本：可执行程序与随版本隔离保存的设置/插件'
 
 async function refresh() {
+  appInfoError.value = ''
   try {
     appInfo.value = await AppAPI.AppService.GetAppInfo()
   } catch (e: unknown) {
-    showToast(`获取系统信息失败: ${getErrorMessage(e)}`)
+    appInfoError.value = getErrorMessage(e)
+    showErrorToast(`获取系统信息失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -84,7 +88,7 @@ async function openFolder(path?: string) {
   try {
     await AppAPI.AppService.OpenPath(path)
   } catch (e: unknown) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+    showErrorToast(`打开目录失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -102,7 +106,7 @@ async function rebind() {
   if (res.ok) {
     showToast('绑定声明已写入，重启 Hanxi 后生效')
   } else {
-    showToast(`绑定失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`绑定失败: ${getErrorMessage(res.error)}`)
   }
 }
 
@@ -118,7 +122,7 @@ async function unbind() {
   if (res.ok) {
     showToast('已解除绑定，重启 Hanxi 后回到应用同级')
   } else {
-    showToast(`解绑失败: ${getErrorMessage(res.error)}`)
+    showErrorToast(`解绑失败: ${getErrorMessage(res.error)}`)
   }
 }
 
@@ -127,18 +131,22 @@ async function unbind() {
 // 缓存：进页即测走缓存/快速测量；巨目录超时不谎报——Partial 行标"≥"下限。
 const usage = ref<StorageUsageItem[]>([])
 const usageLoading = ref(false)
+// 占用测量失败位：失败不得谎报「没有可统计的子目录」空态
+const usageError = ref('')
 const usageAt = ref('')
 
 async function loadUsage(force = false) {
   if (usageLoading.value) return
   usageLoading.value = true
+  usageError.value = ''
   try {
     usage.value = (await AppAPI.AppService.DataRootUsage(force)) ?? []
     usageAt.value = new Date().toLocaleTimeString()
     // 重测穿透时，展开着的 versions 明细同步刷新（同一 force 语义）
     if (force && versionsOpen.value) void loadSub(true)
   } catch (e: unknown) {
-    showToast(`占用测量失败: ${getErrorMessage(e)}`)
+    usageError.value = getErrorMessage(e)
+    showErrorToast(`占用测量失败: ${getErrorMessage(e)}`)
   } finally {
     usageLoading.value = false
   }
@@ -215,7 +223,9 @@ onMounted(() => {
   <section class="page">
     <PageHeader title="存储目录" subtitle="配置、日志与托管工具的落盘位置；数据根默认在应用同级 hanxidata/，可显式绑定到其他位置。">
       <template #actions>
-        <span class="chip" :class="bound ? 'chip-warning' : 'chip-information'">
+        <!-- 读取失败时 chip 变可点重试钮（错误语义色），不再永久假装「正在读取」 -->
+        <button v-if="appInfoError" type="button" class="chip chip-danger root-chip-retry" :title="appInfoError" @click="refresh">读取失败 · 点击重试</button>
+        <span v-else class="chip" :class="bound ? 'chip-warning' : 'chip-information'">
           {{ appInfo ? (bound ? '已绑定数据之家 · 重启后生效切换' : '应用同级 · ./hanxidata') : '正在读取数据根…' }}
         </span>
       </template>
@@ -255,8 +265,9 @@ onMounted(() => {
       <div class="setting-row usage-head">
         <span class="setting-main">
           <span class="setting-name">数据根占用一览 <span class="chip chip-neutral dir-badge">一级子目录 · 软件与数据类目</span></span>
-          <code class="setting-desc dir-path">
+          <code class="setting-desc dir-path" :class="{ 'usage-head-err': !!usageError && !usageLoading }">
             <template v-if="usageLoading">正在测量（巨目录限时 15 秒，超时按"≥"下限呈现）…</template>
+            <template v-else-if="usageError">测量失败：{{ usageError }}</template>
             <template v-else-if="usageAt">测量于 {{ usageAt }}{{ usageAnyPartial ? ' · 含下限估算项' : '' }}</template>
             <template v-else>尚未测量</template>
           </code>
@@ -274,6 +285,10 @@ onMounted(() => {
       <div v-if="usageLoading && !usage.length" class="usage-state usage-loading" role="status">
         <span class="usage-spinner" aria-hidden="true"></span>
         <span>正在扫描数据根……巨目录最多测量 15 秒</span>
+      </div>
+      <div v-else-if="usageError && !usage.length" class="state-box state-error">
+        <span>占用测量失败：{{ usageError }}</span>
+        <button class="state-action" :disabled="usageLoading" @click="loadUsage(true)">重试</button>
       </div>
       <template v-else-if="usage.length" v-for="item in usage" :key="item.name">
         <div class="setting-row usage-row">
@@ -319,7 +334,7 @@ onMounted(() => {
           </div>
         </template>
       </template>
-      <div v-else-if="!usageLoading" class="usage-state usage-empty">
+      <div v-else-if="!usageLoading && !usageError" class="usage-state usage-empty">
         <span class="usage-empty-title">数据根当前没有可统计的子目录</span>
         <span class="usage-empty-hint">点击「重新测量」再次检查，或先安装/导入一个托管工具。</span>
       </div>
@@ -362,6 +377,12 @@ onMounted(() => {
 .usage-empty { flex-direction: column; align-items: flex-start; gap: 3px; }
 .usage-empty-title { color: var(--color-text); font-weight: 600; }
 .usage-empty-hint { color: var(--color-text-subtle); font-size: var(--text-xs); }
+/* chip 形重试钮：reset 按钮默认皮，沿用 chip-danger 软底；hover 加深一档派生底，
+   键盘焦点环归 base.css 全局 :focus-visible */
+.root-chip-retry { border: none; cursor: pointer; font-family: inherit; }
+.root-chip-retry:hover { background: color-mix(in srgb, var(--state-danger) 18%, var(--state-danger-soft)); }
+/* 占用卡头错误行：放开截断让错误全文可读，语义色走 danger */
+.usage-head-err { color: var(--state-danger); white-space: normal; }
 .usage-spinner {
   width: 13px; height: 13px; flex: none; border: 2px solid var(--color-border-strong);
   border-top-color: var(--color-primary); border-radius: 50%; animation: storage-spin .75s linear infinite;

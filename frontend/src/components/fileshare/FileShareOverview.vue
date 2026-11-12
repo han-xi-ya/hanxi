@@ -8,24 +8,27 @@ defineProps<{
   status: ServerStatus
   /** 投递箱条数（视图传 dropInbox.length）。 */
   inboxCount: number
+  /** 首屏数据未落地：数值位出「读取中」占位，不渲染默认全 0 假概览（缺省 false）。 */
+  initialLoading?: boolean
 }>()
 </script>
 
 <template>
-  <section class="overview-grid section-gap" aria-label="快传服务概览">
+  <section class="overview-grid section-gap" aria-label="快传服务概览" :aria-busy="initialLoading || undefined">
     <article class="overview-card overview-card-primary">
       <div class="metric-icon" aria-hidden="true">⌁</div>
       <div>
         <div class="stat-label">服务状态</div>
-        <div class="stat-val">{{ status.isRunning ? '在线可访问' : '等待启动' }}</div>
-        <div class="stat-sub">{{ status.activeConnections }} 个活跃连接</div>
+        <div class="stat-val" :class="{ 'stat-loading': initialLoading }">{{ initialLoading ? '读取中…' : status.isRunning ? '在线可访问' : '等待启动' }}</div>
+        <div class="stat-sub">{{ initialLoading ? '正在读取快传状态…' : `${status.activeConnections} 个活跃连接` }}</div>
       </div>
     </article>
     <article class="overview-card">
       <div class="metric-icon metric-icon-green" aria-hidden="true">↕</div>
       <div>
         <div class="stat-label">实时传输速率</div>
-        <div class="stat-val stat-val-compact font-mono">
+        <div v-if="initialLoading" class="stat-val stat-loading">读取中…</div>
+        <div v-else class="stat-val stat-val-compact font-mono">
           <span class="text-upload">↑ {{ formatSpeed(status.uploadRate) }}</span>
           <span class="text-download">↓ {{ formatSpeed(status.downloadRate) }}</span>
         </div>
@@ -36,18 +39,19 @@ defineProps<{
       <div class="metric-icon metric-icon-blue" aria-hidden="true">Σ</div>
       <div>
         <div class="stat-label">累计传输</div>
-        <div class="stat-val stat-val-compact font-mono">
+        <div v-if="initialLoading" class="stat-val stat-loading">读取中…</div>
+        <div v-else class="stat-val stat-val-compact font-mono">
           {{ formatBytes(status.uploadBytes + status.downloadBytes) }}
         </div>
-        <div class="stat-sub">{{ status.uploadCount }} 次上传 · {{ status.downloadCount }} 次下载</div>
+        <div class="stat-sub">{{ initialLoading ? '正在读取快传状态…' : `${status.uploadCount} 次上传 · ${status.downloadCount} 次下载` }}</div>
       </div>
     </article>
     <article class="overview-card">
       <div class="metric-icon metric-icon-amber" aria-hidden="true">✦</div>
       <div>
         <div class="stat-label">跨端投递</div>
-        <div class="stat-val">{{ inboxCount }} <span class="unit">条</span></div>
-        <div class="stat-sub">文本与链接碎片</div>
+        <div class="stat-val" :class="{ 'stat-loading': initialLoading }">{{ initialLoading ? '读取中…' : inboxCount }}<span v-if="!initialLoading" class="unit">条</span></div>
+        <div class="stat-sub">{{ initialLoading ? '正在读取快传状态…' : '文本与链接碎片' }}</div>
       </div>
     </article>
   </section>
@@ -101,7 +105,7 @@ defineProps<{
   padding: 16px;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 13px;
+  border-radius: var(--radius-element);
   transition: transform var(--motion-slow) ease, border-color var(--motion-slow) ease, box-shadow var(--motion-slow) ease;
 }
 
@@ -127,12 +131,15 @@ defineProps<{
   font-size: var(--text-xl);
   font-weight: 700;
   background: var(--color-primary-soft);
-  border-radius: 11px;
+  border-radius: var(--radius-element);
 }
 
 .metric-icon-green { color: var(--state-positive); background: var(--state-positive-soft); }
 .metric-icon-blue { color: var(--state-information); background: var(--state-information-soft); }
 .metric-icon-amber { color: var(--state-warning); background: var(--state-warning-soft); }
+
+/* 首屏读取占位：muted 小一档字重与字号，不与真实数值抢视觉层级 */
+.stat-loading { font-size: var(--text-base); font-weight: 500; color: var(--color-text-muted); }
 
 .stat-val-compact {
   display: flex;

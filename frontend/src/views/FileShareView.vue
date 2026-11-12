@@ -2,7 +2,8 @@
 // 局域网文件快传视图 —— 编排层：业务状态/操作/事件订阅/轮询全部在
 // composables/useFileShareServer；hero/概览/设置/工作区（接入点·投递箱·审计）按职责
 // 拆分在 components/fileshare/*，本文件只留页面骨架与根级标记（alert-banner 错误横幅
-// 类为 spec 选择器锚点，无样式；section-gap 样式在本层），FileShareView.spec.ts 锁行为基线。
+// 类为 spec 选择器锚点，样式挂全局 .banner/.banner-error 原子 + 本层 flex 差分；
+// section-gap 样式在本层），FileShareView.spec.ts 锁行为基线。
 import FileShareHero from '../components/fileshare/FileShareHero.vue'
 import FileShareOverview from '../components/fileshare/FileShareOverview.vue'
 import FileShareSettings from '../components/fileshare/FileShareSettings.vue'
@@ -16,8 +17,11 @@ const {
   dropInbox,
   transferLogs,
   loading,
+  initialLoading,
+  saving,
   errorMsg,
   qrMap,
+  qrErrors,
   canOpenShareDirectory,
   unsavedPathHint,
   handleToggleServer,
@@ -27,6 +31,7 @@ const {
   copyToClipboard,
   handleDeleteDrop,
   handleClearInbox,
+  retryQRCodes,
 } = useFileShareServer()
 </script>
 
@@ -36,21 +41,24 @@ const {
       :status="status"
       :fallback-port="configForm.port"
       :loading="loading"
+      :initial-loading="initialLoading"
       @toggle="handleToggleServer"
     />
 
-    <div v-if="errorMsg" class="alert-banner error section-gap">
+    <div v-if="errorMsg" class="alert-banner banner banner-error section-gap" role="alert">
       <span>⚠️ {{ errorMsg }}</span>
-      <button type="button" class="btn-text" aria-label="关闭错误提示" @click="errorMsg = ''">✕</button>
+      <button type="button" class="link-button banner-close" aria-label="关闭错误提示" @click="errorMsg = ''">✕</button>
     </div>
 
-    <FileShareOverview :status="status" :inbox-count="dropInbox.length" />
+    <FileShareOverview :status="status" :inbox-count="dropInbox.length" :initial-loading="initialLoading" />
 
     <FileShareSettings
       :form="configForm"
       :is-running="status.isRunning"
       :can-open="canOpenShareDirectory"
       :unsaved="unsavedPathHint"
+      :saving="saving"
+      :initial-loading="initialLoading"
       @save="handleSaveConfig"
       @choose="handleChooseDirectory"
       @open="handleOpenShareDirectory"
@@ -60,12 +68,14 @@ const {
       :is-running="status.isRunning"
       :endpoints="endpoints"
       :qr-map="qrMap"
+      :qr-errors="qrErrors"
       :inbox="dropInbox"
       :logs="transferLogs"
       @copy-url="copyToClipboard($event)"
       @copy-content="copyToClipboard($event, '已复制投递内容')"
       @delete-drop="handleDeleteDrop"
       @clear-inbox="handleClearInbox"
+      @retry-qr="retryQRCodes"
     />
   </div>
 </template>
@@ -86,6 +96,17 @@ const {
 .section-gap {
   margin-bottom: 18px;
 }
+
+/* 错误横幅布局差分（配色/圆角/内距归全局 .banner/.banner-error）：
+   文本与 ✕ 两端分布，长错误串可折行 */
+.alert-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+/* ✕ 走 .link-button 语义，色随横幅语义色（继承 banner-error 的 danger） */
+.banner-close { color: inherit; flex: none; font-size: var(--text-base); }
 
 @media (max-width: 760px) {
   .fileshare-page {

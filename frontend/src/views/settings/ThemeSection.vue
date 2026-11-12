@@ -3,7 +3,7 @@
 // 主题持久化走 useTheme 单例（后端 SetTheme/SetAccent/SetFont +
 // DOM data-theme/data-accent/data-font + 原生标题栏联动），本视图只做选择器，不碰持久化细节。
 import { computed } from 'vue'
-import { useTheme, type AccentMode, type FontMode } from '../../composables/useTheme'
+import { useTheme, type AccentMode, type FontMode, type ThemeMode } from '../../composables/useTheme'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 
@@ -35,6 +35,24 @@ const FONTS: ReadonlyArray<{ key: FontMode; label: string; desc: string }> = [
 
 // 字体档简介随行展示（与明暗行 hint 同一交互语义：描述始终说的是当前生效档）
 const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ?? '')
+
+// 三组 radiogroup 的 roving tabindex + 方向键导航（APG radio 模式）：
+// 选中项 tabindex=0 其余 -1（11 个按钮不再各占一个 Tab 位），组内
+// ArrowLeft/Right/Up/Down 循环切换并聚焦。键序即视觉序。
+const THEME_KEYS: readonly ThemeMode[] = ['system', 'light', 'dark']
+const ACCENT_KEYS: readonly AccentMode[] = ACCENTS.map((a) => a.key)
+const FONT_KEYS: readonly FontMode[] = FONTS.map((f) => f.key)
+
+function segKeydown<K extends string>(e: KeyboardEvent, keys: readonly K[], current: K, apply: (key: K) => void) {
+  const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+    : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
+  if (!delta) return
+  e.preventDefault()
+  const next = keys[(keys.indexOf(current) + delta + keys.length) % keys.length]
+  apply(next)
+  // 选中项 tabindex 随响应式更新翻 0，按 data-seg-key 定位新焦点
+  ;(e.currentTarget as HTMLElement).querySelector<HTMLElement>(`[data-seg-key="${next}"]`)?.focus()
+}
 </script>
 
 <template>
@@ -47,24 +65,24 @@ const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ??
           <span class="setting-name">界面主题</span>
           <span class="setting-desc">{{ hint }}</span>
         </span>
-        <div class="theme-seg seg-theme" role="radiogroup" aria-label="界面主题">
+        <div class="theme-seg seg-theme" role="radiogroup" aria-label="界面主题" @keydown="segKeydown($event, THEME_KEYS, themeMode, setThemeMode)">
           <button
             type="button" class="theme-seg-btn" :class="{ active: themeMode === 'system' }"
-            role="radio" :aria-checked="themeMode === 'system'" @click="setThemeMode('system')"
+            role="radio" :aria-checked="themeMode === 'system'" :tabindex="themeMode === 'system' ? 0 : -1" data-seg-key="system" @click="setThemeMode('system')"
           >
             <AppIcon name="monitor" :size="14" />
             <span>跟随系统</span>
           </button>
           <button
             type="button" class="theme-seg-btn" :class="{ active: themeMode === 'light' }"
-            role="radio" :aria-checked="themeMode === 'light'" @click="setThemeMode('light')"
+            role="radio" :aria-checked="themeMode === 'light'" :tabindex="themeMode === 'light' ? 0 : -1" data-seg-key="light" @click="setThemeMode('light')"
           >
             <AppIcon name="sun" :size="14" />
             <span>浅色</span>
           </button>
           <button
             type="button" class="theme-seg-btn" :class="{ active: themeMode === 'dark' }"
-            role="radio" :aria-checked="themeMode === 'dark'" @click="setThemeMode('dark')"
+            role="radio" :aria-checked="themeMode === 'dark'" :tabindex="themeMode === 'dark' ? 0 : -1" data-seg-key="dark" @click="setThemeMode('dark')"
           >
             <AppIcon name="moon" :size="14" />
             <span>深色</span>
@@ -77,11 +95,11 @@ const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ??
           <span class="setting-name">色板</span>
           <span class="setting-desc">与明暗轴正交的五套色板，即选即生效、持久化于后端设置</span>
         </span>
-        <div class="theme-seg seg-accent" role="radiogroup" aria-label="色板">
+        <div class="theme-seg seg-accent" role="radiogroup" aria-label="色板" @keydown="segKeydown($event, ACCENT_KEYS, accent, setAccent)">
           <button
             v-for="a in ACCENTS" :key="a.key"
             type="button" class="theme-seg-btn" :class="{ active: accent === a.key }"
-            role="radio" :aria-checked="accent === a.key" @click="setAccent(a.key)"
+            role="radio" :aria-checked="accent === a.key" :tabindex="accent === a.key ? 0 : -1" :data-seg-key="a.key" @click="setAccent(a.key)"
           >
             <span class="accent-dot" :style="{ background: a.dot }" aria-hidden="true" />
             <span>{{ a.label }}</span>
@@ -94,11 +112,11 @@ const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ??
           <span class="setting-name">界面字体</span>
           <span class="setting-desc">{{ fontHint }}</span>
         </span>
-        <div class="theme-seg seg-font" role="radiogroup" aria-label="界面字体">
+        <div class="theme-seg seg-font" role="radiogroup" aria-label="界面字体" @keydown="segKeydown($event, FONT_KEYS, font, setFontMode)">
           <button
             v-for="f in FONTS" :key="f.key"
             type="button" class="theme-seg-btn" :class="{ active: font === f.key }"
-            role="radio" :aria-checked="font === f.key" @click="setFontMode(f.key)"
+            role="radio" :aria-checked="font === f.key" :tabindex="font === f.key ? 0 : -1" :data-seg-key="f.key" @click="setFontMode(f.key)"
           >
             <span>{{ f.label }}</span>
           </button>

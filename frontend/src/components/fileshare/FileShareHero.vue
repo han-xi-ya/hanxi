@@ -8,6 +8,8 @@ defineProps<{
   /** 服务未运行时展示的兜底端口（视图传 configForm.port）。 */
   fallbackPort: number
   loading: boolean
+  /** 首屏数据未落地：状态灯/端口出读取态，启停钮禁用防抢跑（缺省 false 兼容独立挂载）。 */
+  initialLoading?: boolean
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
@@ -25,21 +27,22 @@ const emit = defineEmits<{ toggle: [] }>()
         零客户端依赖的局域网极速文件/文本分享站。手机电脑同一 Wi-Fi 扫码即用，支持大文件单次流式拖拽上传。
       </p>
       <div class="hero-meta">
-        <span class="status-pill" :class="{ online: status.isRunning }">
-          <span class="status-indicator" :class="{ online: status.isRunning }"></span>
-          {{ status.isRunning ? '服务运行中' : '服务已停止' }}
+        <span class="status-pill" :class="{ online: !initialLoading && status.isRunning }">
+          <span v-if="!initialLoading" class="status-indicator" :class="{ online: status.isRunning }"></span>
+          {{ initialLoading ? '正在读取快传状态…' : status.isRunning ? '服务运行中' : '服务已停止' }}
         </span>
-        <span class="hero-port font-mono">端口 :{{ status.port || fallbackPort }}</span>
+        <span class="hero-port font-mono">{{ initialLoading ? '端口读取中…' : `端口 :${status.port || fallbackPort}` }}</span>
       </div>
     </div>
     <button
       type="button"
       class="btn btn-primary hero-action"
       :class="{ 'btn-danger': status.isRunning }"
-      :disabled="loading"
+      :disabled="loading || initialLoading"
       @click="emit('toggle')"
     >
-      <span v-if="loading">处理中...</span>
+      <span v-if="initialLoading">读取中…</span>
+      <span v-else-if="loading">处理中...</span>
       <span v-else-if="status.isRunning">■ 停止快传服务</span>
       <span v-else>▶ 启动快传服务</span>
     </button>
@@ -76,7 +79,7 @@ const emit = defineEmits<{ toggle: [] }>()
     radial-gradient(circle at 85% 0%, var(--state-information-soft), transparent 36%),
     linear-gradient(135deg, var(--surface-panel), var(--surface-soft));
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel);
 }
 
@@ -115,7 +118,7 @@ const emit = defineEmits<{ toggle: [] }>()
   color: var(--color-on-primary);
   font-size: var(--text-2xl);
   background: linear-gradient(135deg, var(--color-primary), var(--state-information));
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   box-shadow: var(--shadow-small);
 }
 
@@ -145,7 +148,7 @@ const emit = defineEmits<{ toggle: [] }>()
   font-weight: 600;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .status-pill.online {

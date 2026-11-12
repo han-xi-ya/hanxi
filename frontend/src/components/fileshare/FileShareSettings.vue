@@ -2,6 +2,8 @@
 // 共享服务设置卡：共享位置 / 网络与容量 / 访问权限三面板 + 保存动作入口。
 // 注：form 是视图层 configForm 同一响应式对象的引用——面板字段 v-model 深绑定直改原件，
 // 不做本地拷贝；保存/选目录/打开目录等业务动作 emit 回视图编排层（useFileShareServer）执行。
+/* eslint-disable vue/no-mutating-props -- form 是视图层 configForm 同一响应式对象引用，
+   v-model 深绑定直改原件系刻意决策（§9.6-3），与拆分前 configForm.value.* 语义逐字等价 */
 import type { ShareConfig } from '../../../bindings/hanxi/internal/modules/fileshare/models'
 
 const props = defineProps<{
@@ -12,6 +14,10 @@ const props = defineProps<{
   canOpen: boolean
   /** 「当前路径尚未保存」提示位：路径非空且与已保存值不一致。 */
   unsaved: boolean
+  /** 保存在途：按钮禁用 + 「保存中…」，连点不得并发重复 SaveConfig。 */
+  saving: boolean
+  /** 首屏数据未落地：保存/选目录/打开目录一并禁用（缺省 false）。 */
+  initialLoading?: boolean
 }>()
 
 const emit = defineEmits<{ save: []; choose: []; open: [] }>()
@@ -31,7 +37,7 @@ function setQuickPort(port: number) {
       </div>
       <div class="section-actions">
         <span v-if="isRunning" class="hot-apply-tip">● 保存后实时生效</span>
-        <button type="button" class="btn btn-secondary btn-small" @click="emit('save')">保存共享规则</button>
+        <button type="button" class="btn btn-secondary btn-small save-action" :disabled="saving || initialLoading" @click="emit('save')">{{ saving ? '保存中…' : '保存共享规则' }}</button>
       </div>
     </div>
 
@@ -53,13 +59,13 @@ function setQuickPort(port: number) {
             class="input-control font-mono"
             placeholder="请选择或输入要共享的物理文件夹路径..."
           />
-          <button type="button" class="btn btn-secondary btn-small path-action" @click="emit('choose')">
+          <button type="button" class="btn btn-secondary btn-small path-action" :disabled="initialLoading" @click="emit('choose')">
             选择目录
           </button>
           <button
             type="button"
             class="btn btn-secondary btn-small path-action open-action"
-            :disabled="!canOpen"
+            :disabled="!canOpen || initialLoading"
             :title="canOpen ? '在系统资源管理器中打开共享目录' : '请先保存当前共享目录'"
             @click="emit('open')"
           >
@@ -226,7 +232,7 @@ function setQuickPort(port: number) {
   font-size: var(--text-md);
   font-weight: 700;
   background: var(--color-primary-soft);
-  border-radius: 9px;
+  border-radius: var(--radius-control);
 }
 
 .section-kicker {
@@ -242,7 +248,7 @@ function setQuickPort(port: number) {
   overflow: hidden;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel);
 }
 
@@ -280,6 +286,9 @@ function setQuickPort(port: number) {
   font-weight: 600;
 }
 
+/* 保存钮宽度稳定档：busy 文案「保存中…」与常态「保存共享规则」同宽不跳动 */
+.save-action { min-width: 112px; }
+
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
@@ -293,7 +302,7 @@ function setQuickPort(port: number) {
   padding: 18px;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-element);
 }
 
 .location-panel { grid-column: 1; }
@@ -390,7 +399,7 @@ function setQuickPort(port: number) {
   cursor: pointer;
   background: var(--surface-soft);
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   transition: border-color var(--motion-slow), background var(--motion-slow);
 }
 

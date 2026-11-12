@@ -80,7 +80,12 @@ const grouped = computed(() => {
   text-align: left; cursor: pointer; font-family: inherit;
 }
 .fa-file:hover { background: var(--surface-hover); }
-.fa-file.active { background: var(--surface-hover); border-color: var(--color-border); }
+/* 选中底走仓库选中态惯例 --surface-selected，与 :hover 的 surface-hover 拉开层级；
+   描边混 primary 25% 强化身份（不靠颜色独撑，active 类本身即语义） */
+.fa-file.active {
+  background: var(--surface-selected);
+  border-color: color-mix(in srgb, var(--color-primary) 25%, var(--color-border));
+}
 .fa-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fa-dead { flex: none; font-size: var(--text-xs); padding: 0 5px; }
 /* 恢复生效常驻徽标 .fa-scope（micro chip 迷你档，色走全局 chip token）已落回全局原子 */

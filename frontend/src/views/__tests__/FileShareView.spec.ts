@@ -6,6 +6,9 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FileShareView from '../FileShareView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
+
+const { confirmState, settleConfirm } = useConfirm()
 
 const srv = vi.hoisted(() => ({
   GetServerStatus: vi.fn(),
@@ -85,6 +88,7 @@ async function mountInKeepAlive() {
 }
 
 afterEach(() => {
+  settleConfirm(false) // 防未裁决的删除/清空确认悬挂到下一用例
   vi.restoreAllMocks()
   useToast().clearToast()
 })
@@ -202,7 +206,7 @@ describe('FileShareView 剪贴板与投递箱', () => {
     wrapper.unmount()
   })
 
-  it('删除与清空投递：本地列表即时收敛 + toast 逐字', async () => {
+  it('删除与清空投递：danger 确认后本地列表即时收敛 + toast 逐字；取消不删', async () => {
     stubHappy(statusOf({ isRunning: true, port: 8080 }))
     srv.GetDropInbox.mockResolvedValue([
       { id: 'a', content: '第一片', senderIp: '192.168.1.42', isUrl: false, createdAt: new Date('2026-09-05T10:00:00').toISOString() },
@@ -214,12 +218,33 @@ describe('FileShareView 剪贴板与投递箱', () => {
     expect(wrapper.findAll('.inbox-item')).toHaveLength(2)
     expect(wrapper.text()).toContain('网址链接')
     const del = wrapper.findAll('.inbox-item')[0].findAll('button').find(b => b.text().includes('删除'))!
+    // 单条删除先弹 danger 确认，未裁决不调后端
     await del.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(srv.DeleteDropItem).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flushMicrotasks()
     expect(srv.DeleteDropItem).toHaveBeenCalledWith('a')
     expect(wrapper.findAll('.inbox-item')).toHaveLength(1)
     expect(useToast().toastMsg.value).toBe('已删除投递内容')
+    // 取消路径：确认框关闭即落定，后端零调用、列表不动
+    await wrapper.findAll('.inbox-item')[0].findAll('button').find(b => b.text().includes('删除'))!.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(srv.DeleteDropItem).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('.inbox-item')).toHaveLength(1)
+    // 清空：danger 确认明示条数，确认后一键清箱
     await wrapper.find('.card-header .btn-secondary').trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(confirmState.options.description).toContain('1 条')
+    expect(srv.ClearDropInbox).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flushMicrotasks()
     expect(srv.ClearDropInbox).toHaveBeenCalled()
     expect(wrapper.findAll('.inbox-item')).toHaveLength(0)

@@ -17,11 +17,13 @@ import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 import SettingsModal from './SettingsModal.vue'
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 const { confirm } = useConfirm()
 
 const status = ref<WizardStatus | null>(null)
 const loading = ref(false)
+// 探测失败位：失败不得冒充空客户端列表——错误面板 + 重试与真空态分离
+const loadError = ref('')
 
 // 向导弹窗态：预览 → 结果两段（result 非空即进入结果态，不再可确认）。
 // check/checkBusy 为安装前自检的本地态：Go 侧短 TTL 缓存，
@@ -131,7 +133,7 @@ async function setTool(t: { key: string; name: string }, enabled: boolean) {
     applyAccess(await McpWizardAPI.McpWizardService.SetToolAccess(t.key, enabled))
     showToast(`${t.name}已${enabled ? '开放' : '收回'}——立即生效，不用重启任何软件`)
   } catch (e: unknown) {
-    showToast(`授权改动未生效: ${getErrorMessage(e)}`)
+    showErrorToast(`授权改动未生效: ${getErrorMessage(e)}`)
     await refreshAccess()
   } finally {
     accessBusy.value = false
@@ -152,11 +154,12 @@ async function repairAccess() {
   accessBusy.value = true
   try {
     const res = await McpWizardAPI.McpWizardService.ResetAccess()
-    showToast(res.message)
+    if (res.success) showToast(res.message)
+    else showErrorToast(res.message)
     if (!res.success) await refresh() // 备份/写入失败细节在 message，整卡重探一次口径最全
     else applyAccess(await McpWizardAPI.McpWizardService.GetAccessOverview())
   } catch (e: unknown) {
-    showToast(`修复失败: ${getErrorMessage(e)}`)
+    showErrorToast(`修复失败: ${getErrorMessage(e)}`)
   } finally {
     accessBusy.value = false
   }
@@ -178,10 +181,12 @@ const serverCmd = computed(() => {
 
 async function refresh() {
   loading.value = true
+  loadError.value = ''
   try {
     status.value = await McpWizardAPI.McpWizardService.GetStatus()
   } catch (e: unknown) {
-    showToast(`探测客户端配置失败: ${getErrorMessage(e)}`)
+    loadError.value = getErrorMessage(e)
+    showErrorToast(`探测客户端配置失败: ${getErrorMessage(e)}`)
   } finally {
     loading.value = false
   }
@@ -202,7 +207,7 @@ async function openWizard(client: ClientState, mode: 'install' | 'uninstall') {
     // 自检只在「可写入的安装预览」里做：拒动路径本就不落盘，无须再 spawn
     if (mode === 'install' && pv.allowed) void runCheck(false)
   } catch (e: unknown) {
-    showToast(`${actionWord(mode)}预览失败: ${getErrorMessage(e)}`)
+    showErrorToast(`${actionWord(mode)}预览失败: ${getErrorMessage(e)}`)
     modal.value = null
   } finally {
     if (modal.value) modal.value.busy = false
@@ -236,10 +241,10 @@ async function confirmWrite() {
       ? await McpWizardAPI.McpWizardService.ConfirmInstall(m.client.id, m.preview.token)
       : await McpWizardAPI.McpWizardService.ConfirmUninstall(m.client.id, m.preview.token)
     if (modal.value) modal.value.result = res
-    if (!res.success) showToast(`${actionWord(m.mode)}未完成：${res.message}`)
+    if (!res.success) showErrorToast(`${actionWord(m.mode)}未完成：${res.message}`)
     await refresh()
   } catch (e: unknown) {
-    showToast(`${actionWord(m.mode)}被拒绝: ${getErrorMessage(e)}`)
+    showErrorToast(`${actionWord(m.mode)}被拒绝: ${getErrorMessage(e)}`)
     if (modal.value) modal.value.result = { success: false, rolledBack: false, backupPath: '', message: getErrorMessage(e) }
   } finally {
     if (modal.value) modal.value.busy = false
@@ -269,7 +274,7 @@ async function openAccessDir() {
   try {
     await AppAPI.AppService.OpenPath(accessDir.value)
   } catch (e: unknown) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+    showErrorToast(`打开目录失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -296,6 +301,11 @@ onMounted(refresh)
       </div>
       <div class="step-note">「接入」= 在 AI 软件自己的配置里登记一行 hanxi 启动命令。动手前先给你看改什么，写完自动校验，不对就自动还原。</div>
       <div v-if="loading && !status" class="ai-empty">正在探测客户端配置文件…</div>
+      <div v-else-if="loadError && !status" class="state-box state-error">
+        探测客户端配置失败：{{ loadError }}
+        <button class="state-action" :disabled="loading" @click="refresh">重试</button>
+      </div>
+      <div v-else-if="!(status?.clients ?? []).length" class="ai-empty">未探测到可接入的 AI 客户端（Claude Code / Codex / Cursor），安装后点「重新探测」。</div>
       <div v-else class="client-list">
         <div v-for="c in status?.clients ?? []" :key="c.id" class="client-row">
           <div class="client-main">
@@ -388,7 +398,7 @@ onMounted(refresh)
 
     <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态。骨架收口 SettingsModal，
          点外遮罩收与 ✕ 钮语义原样，内容三段全宿主自撰 -->
-    <SettingsModal v-if="modal" @close="closeWizard">
+    <SettingsModal v-if="modal" :title="`${actionWord(modal.mode)} · ${modal.client.name}`" @close="closeWizard">
         <template #head>
           <h3>{{ actionWord(modal.mode) }} · {{ modal.client.name }}</h3>
         </template>
