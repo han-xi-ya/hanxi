@@ -5,10 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/wails.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="stylesheet" href="/style.css" />
+    <!-- 主字族预加载：6.1MB woff2 首帧最大资产，preload 让字体 fetch 与 JS 并行起跑，
+         缩短 swap 档系统字→文楷的换装窗口（FOUT）；crossorigin 匿名与 @font-face fetch 模式对齐 -->
+    <link rel="preload" href="/src/assets/fonts/LXGWWenKaiGBScreen-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <title>Hanxi</title>
   </head>
   <body>
-    <div class="bg" aria-hidden="true"></div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
