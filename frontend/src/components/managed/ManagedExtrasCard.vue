@@ -173,13 +173,15 @@ onMounted(() => {
   <div class="extras-card">
     <div class="extras-row">
       <label v-if="adapter.extras?.followOnExit" class="toggle-label">
-        <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
+        <!-- busy 闸：runExclusive 在飞时静默丢弃写动作，原生 checkbox 已翻位却无 ref
+             变化驱动回同步 → 勾位与后端永久脱钩。禁用即杜绝假翻位（P1-1）。 -->
+        <input type="checkbox" :checked="followOnExit" :disabled="store?.busy" @change="onFollowToggle" />
         <span>{{ adapter.extras.followOnExit.label ?? '随 Hanxi 一起关闭' }}
           <span class="hint-dim">{{ adapter.extras.followOnExit.note ?? '（关闭后 Hanxi 退出完全不影响该工具）' }}</span>
         </span>
       </label>
       <label v-if="adapter.extras?.dataMode" class="toggle-label">
-        <input type="checkbox" :checked="dataMode" @change="onDataModeToggle" />
+        <input type="checkbox" :checked="dataMode" :disabled="store?.busy" @change="onDataModeToggle" />
         <span>{{ adapter.extras.dataMode.label ?? '数据随版本独立' }}
           <span class="hint-dim">{{ adapter.extras.dataMode.note ?? '（默认与本机自装的同名工具共享数据）' }}</span>
         </span>

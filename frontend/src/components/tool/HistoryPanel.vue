@@ -96,6 +96,14 @@ watch(keyword, () => debouncedLoad())
 onBeforeUnmount(debouncedLoad.cancel)
 
 async function removeRow(rec: HistoryRecord) {
+  // 单条删除与「清空本桶」同档二次确认（P2-9）：删除不可恢复，待遇不得轻于清空。
+  const accepted = await confirm({
+    title: '删除这条历史记录？',
+    description: rec.summary ? `「${rec.summary}」删除后无法找回；仅删本条，其它记录不受影响。` : '该记录删除后无法找回；仅删本条，其它记录不受影响。',
+    confirmLabel: '删除',
+    tone: 'danger',
+  })
+  if (!accepted) return
   try {
     await HistoryAPI.Delete(rec.id)
     await load()
@@ -229,6 +237,9 @@ defineExpose({ reload: load })
 
 .hp-list { overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); }
 .hp-list table { margin: 0; }
+/* P2-14：表头吸顶——.hp-list 是内滚壳，滚动时表头驻留容器顶；
+   th 底色补显式 --surface-soft（全局 :where 档同值，防 sticky 层叠透明穿底）。 */
+.hp-list thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-soft); }
 .hp-row-active { background: var(--surface-selected); }
 .hp-list tr { cursor: pointer; }
 /* 样式审计 C5：.hp-list 是 overflow:auto 滚动壳，行盒横跨表宽=容器内容宽，

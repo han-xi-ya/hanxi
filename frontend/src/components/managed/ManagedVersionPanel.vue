@@ -148,8 +148,10 @@ function stageText(p: NormalizedProgress): string {
   return ['verify', 'extract'].includes(p.stage) ? '校验解压安装…' : ''
 }
 
+// 远程行「已安装」是静态事实而非动作：缺省中性 chip（静态标签形，无 ghost 钮悬停伪装，
+// EverythingReleaseTable installed-tag 先例）；positive 色调经 copy.installedChipTone 覆写。
 const installedChipClass = computed(() =>
-  copy.value?.installedChipTone === 'positive' ? 'chip chip-positive' : 'btn btn-ghost btn-small',
+  copy.value?.installedChipTone === 'positive' ? 'chip chip-positive' : 'chip chip-neutral',
 )
 </script>
 
@@ -173,7 +175,7 @@ const installedChipClass = computed(() =>
         @click="store.runImport()"
       >{{ copy?.importLabel ?? '⇥ 导入本地安装' }}</button>
       <button class="btn btn-secondary btn-small" :disabled="store.loading" @click="store.load()">
-        {{ store.loading ? '刷新中…' : refreshWord }}
+        {{ refreshWord }}<span v-if="store.loading" class="btn-spin" aria-hidden="true"></span>
       </button>
     </div>
   </div>
@@ -335,14 +337,14 @@ const installedChipClass = computed(() =>
               @click="store.runDownload(rel)"
             >{{ idleDownloadLabel(rel) }}</button>
             <span v-if="statusOf(rel) === 'installed'" :class="installedChipClass">已安装</span>
-            <a
+            <button
               v-if="statusOf(rel) === 'error'"
+              type="button"
               class="retry-link"
-              :class="{ disabled: !!downloadBlockedTitle }"
-              :aria-disabled="!!downloadBlockedTitle"
+              :disabled="!!downloadBlockedTitle"
               :title="downloadBlockedTitle ?? undefined"
-              @click="!downloadBlockedTitle && store.runDownload(rel)"
-            >重试</a>
+              @click="store.runDownload(rel)"
+            >重试</button>
             <!-- 模块方言远程行动作槽：作用域 release，缺省不填零变化 -->
             <slot name="release-actions" :release="rel" />
           </td>
@@ -366,7 +368,6 @@ const installedChipClass = computed(() =>
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
-.retry-link.disabled { color: var(--color-text-subtle); cursor: not-allowed; text-decoration: none; }
 
 /* N13 上游发布列：徽标密度克制（text-xs、允许换行）；托管形态主色描边一眼锁定 */
 .asset-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -378,4 +379,15 @@ const installedChipClass = computed(() =>
    密度同 asset-chip 档；缺 form 的行不渲染、不留占位。
    核心形已上收全局 .form-chip 原子（components.css），此处只留 4px 前置间距补差 */
 .form-chip { margin-left: 4px; }
+
+/* P2-6：远程表窄窗地板（WslDistroTable:1026 先例）——不足 760px 由 .table-container
+   的 overflow-x:auto 承接横滚，不再把各列碾到换行错乱。 */
+.tbl { min-width: 760px; }
+/* P2-12：忙时保留原词 + 尾部内联 spinner 防宽度骤缩抖动（WslReadinessPanel 形制）。 */
+.btn-spin {
+  width: 9px; height: 9px; margin-left: 6px; display: inline-block; vertical-align: 0;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: hx-spin 750ms linear infinite;
+}
+@keyframes hx-spin { to { transform: rotate(360deg); } }
 </style>

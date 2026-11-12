@@ -50,7 +50,7 @@ const emit = defineEmits<{
 
 <style scoped>
 .installed-card {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color var(--motion-base) ease;
 }
 .installed-card.card-active { border-color: var(--color-primary); }

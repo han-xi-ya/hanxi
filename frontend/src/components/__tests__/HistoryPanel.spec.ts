@@ -116,12 +116,15 @@ describe('HistoryPanel', () => {
     expect(detailBtns).not.toContain('应用')
   })
 
-  it('删除本条走 Delete 后重拉列表', async () => {
+  it('删除本条走二次确认后 Delete 再重拉列表（与清空同档）', async () => {
+    const { settleConfirm } = useConfirm()
     const w = factory()
     await settleTimers()
     api.List.mockResolvedValue([rec({ id: 2 })])
     await w.findAll('tbody tr')[0].trigger('click') // 选中第一行 id=1
     await w.find('.hp-detail .btn-danger-outline').trigger('click')
+    await nextTick()
+    settleConfirm(true)
     await vi.runOnlyPendingTimersAsync()
     await settleTimers()
     expect(api.Delete).toHaveBeenCalledWith(1)

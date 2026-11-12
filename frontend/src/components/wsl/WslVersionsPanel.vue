@@ -161,7 +161,7 @@ onMounted(() => {
       <span v-else class="hint-dim">MSI 由 Hanxi 直接下载到系统"下载"文件夹（应用内进度，不经过浏览器）；列表只显示本机架构（{{ report?.machineArch || '探测中…' }}）的安装包，异架构已自动隐藏</span>
     </div>
     <div class="btn-group">
-      <button class="btn btn-secondary btn-small" :disabled="relLoading" @click="loadReleases">{{ relLoading ? '刷新中…' : '↻ 刷新列表' }}</button>
+      <button class="btn btn-secondary btn-small" :disabled="relLoading" @click="loadReleases">↻ 刷新列表<span v-if="relLoading" class="btn-spin" aria-hidden="true"></span></button>
       <button class="btn btn-secondary btn-small" @click="openReleasesPage">🌐 官方发布页</button>
       <button class="btn btn-secondary btn-small" @click="openDocs">📖 官方文档</button>
     </div>
@@ -259,4 +259,11 @@ onMounted(() => {
 .dl-bar { width: 110px; display: inline-flex; }
 /* 色与字号走全局 .dl-error；此处仅留加粗补差 */
 .dl-error { font-weight: 600; }
+/* P2-12：忙时保留原词 + 尾部内联 spinner 防宽度骤缩抖动（WslReadinessPanel 形制） */
+.btn-spin {
+  width: 9px; height: 9px; margin-left: 6px; display: inline-block; vertical-align: 0;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: hx-spin 750ms linear infinite;
+}
+@keyframes hx-spin { to { transform: rotate(360deg); } }
 </style>

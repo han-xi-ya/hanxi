@@ -117,8 +117,8 @@ function channelLabel(channel: string): string {
 
 <style scoped>
 /* ---------- 远程表格 ---------- */
-/* .table-container 留局系真差：radius 8px vs 全局 --radius-control */
-.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow-x: auto; }
+/* .table-container 留局系真差：overflow-x:auto（全局原子同档）；radius 已收编 --radius-control */
+.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 /* 版本列弹性排布：与 Snipaste .release-version 同构（gap 供给间距，徽标/chip 换行不溢出） */
 .ver-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* 形态 chip 核心形在全局 .form-chip 原子；行内容器带 gap 无需补差，本表不挂副本 */
@@ -141,9 +141,9 @@ function channelLabel(channel: string): string {
 }
 
 /* .download-cell/.dl-percent/.dl-meta-text/.dl-error/.ver-name 均不挂 scoped 副本，
-   落回 components.css 托管家族块 :where 标准形；dl-bar 覆写档留局系真差
-   （radius 3px vs 全局 --radius-pill、motion-fast linear vs motion-base ease），裁决未定 */
-.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+   落回 components.css 托管家族块 :where 标准形；dl-bar 留局仅 motion 真差：
+   进度轨已收编 --radius-pill（design-system：progress 用 pill），motion-fast linear 保留（~100ms linear 进度口径） */
+.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
 .dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
 /* 重试是 <button> 而非无 href 的 <a>：键盘可达；外观维持链接形 */
 .retry-link { appearance: none; background: none; border: none; padding: 0; font: inherit; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; text-align: left; }

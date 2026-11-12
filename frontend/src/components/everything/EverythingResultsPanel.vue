@@ -87,6 +87,9 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .result-scroll { overflow-x: auto; }
 .result-tbl { max-height: 428px; display: block; overflow-y: auto; }
 .result-tbl thead, .result-tbl tbody { display: table; width: 100%; table-layout: fixed; }
+/* P2-14：双 table 盒结构（thead/tbody 各自 display:table）下给 thead 盒整体吸顶；
+   底色显式 --surface-soft，滚动时表头驻留不穿底。 */
+.result-tbl thead { position: sticky; top: 0; z-index: 1; background: var(--surface-soft); }
 .resizable th { position: relative; }
 .col-resizer {
   position: absolute; top: 0; right: 0; width: 6px; height: 100%;
@@ -110,6 +113,6 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .copy-cell:hover { background: var(--surface-hover); }
-.copy-cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 3px; }
+.copy-cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: var(--radius-micro); }
 .idle-hint { color: var(--color-text-subtle); }
 </style>

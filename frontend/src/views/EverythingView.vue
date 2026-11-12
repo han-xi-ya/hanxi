@@ -287,6 +287,8 @@ onMounted(async () => {
         :es-busy="esBusy"
         :es-progress="esProgress"
         :keyword="keyword"
+        :status-error="store.statusError"
+        :last-status-at="store.lastStatusAt"
         @update:keyword="keyword = $event"
         @keyword-input="onKeywordInput"
         @keyword-enter="onKeywordEnter"

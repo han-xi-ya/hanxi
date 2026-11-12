@@ -72,7 +72,7 @@ function stepOf(progress: NormalizedProgress): number {
           <td><code class="mono">{{ (release.commit || '').slice(0, 10) }}</code></td>
           <td>
             <div v-if="statusOf(release) === 'downloading' && ticket(release)?.stage === 'downloading'" class="download-cell">
-              <div class="dl-bar-wrap" role="progressbar" :aria-valuenow="stepOf(ticket(release)!)" aria-valuemin="0" aria-valuemax="100">
+              <div class="dl-bar-wrap" role="progressbar" aria-label="下载进度" :aria-valuenow="stepOf(ticket(release)!)" aria-valuemin="0" aria-valuemax="100">
                 <div class="dl-bar-inner" :style="{ width: `${stepOf(ticket(release)!)}%` }"></div>
               </div>
               <span class="dl-percent">{{ stepOf(ticket(release)!) }}%</span>
@@ -89,8 +89,10 @@ function stepOf(progress: NormalizedProgress): number {
             <button v-if="statusOf(release) === 'idle'" class="btn btn-primary btn-small" @click="emit('download', release)">
               {{ form === 'installer' ? '安装/升级' : '下载安装' }}
             </button>
-            <span v-if="statusOf(release) === 'installed'" class="btn btn-ghost btn-small">已安装</span>
-            <a v-if="statusOf(release) === 'error'" class="retry-link" @click="emit('download', release)">重试</a>
+            <!-- P2-7：已安装是静态事实——静态标签形（EverythingReleaseTable installed-tag
+                 先例），删 btn btn-ghost 悬停变色的假 affordance -->
+            <span v-if="statusOf(release) === 'installed'" class="installed-tag">已安装</span>
+            <button v-if="statusOf(release) === 'error'" type="button" class="retry-link" @click="emit('download', release)">重试</button>
           </td>
         </tr>
         <tr v-if="releases.length === 0 && !loading">
@@ -112,4 +114,15 @@ function stepOf(progress: NormalizedProgress): number {
 .vc-ver-status.error::before { background: var(--state-danger); }
 .vc-ver-status.idle::before { background: var(--color-text-subtle); }
 .dl-meta-text { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* P2-6：远程表窄窗地板（WslDistroTable:1026 先例）——不足 760px 由 .table-container
+   的 overflow-x:auto 承接横滚，不再把各列碾碎。 */
+.tbl { min-width: 760px; }
+/* 「已安装」静态标签：区别于全局 .btn-ghost（悬停幽灵钮）的静态事实态
+   （EverythingReleaseTable 同形先例） */
+.installed-tag {
+  display: inline-flex; align-items: center; padding: 4px 12px; font-size: var(--text-sm);
+  border-radius: var(--radius-control); border: 1px solid var(--color-border);
+  background: var(--surface-hover); color: var(--color-text-muted);
+}
 </style>

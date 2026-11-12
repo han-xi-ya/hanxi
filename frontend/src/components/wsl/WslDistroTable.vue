@@ -575,6 +575,9 @@ const rowMenuStyle = ref<Record<string, string>>({})
 const rowMenuPanelEl = ref<HTMLElement | null>(null)
 const MENU_GAP = 4
 const MENU_EDGE = 8
+// P2-8 键盘可达：记住触发钮（关闭回焦用）；面板 Teleport 在 body，焦点须显式移入，
+// 否则键盘用户 Tab 会绕完整页才碰到菜单项。
+let rowMenuTrigger: HTMLElement | null = null
 
 const rowMenuDistro = computed(() => props.instances.find(i => i.name === rowMenuName.value) ?? null)
 
@@ -612,10 +615,11 @@ const rowMenuItems = computed(() => {
 
 async function toggleRowMenu(name: string, e: MouseEvent) {
   if (rowMenuName.value === name) {
-    closeRowMenu()
+    closeRowMenu(true)
     return
   }
   const trigger = e.currentTarget as HTMLElement
+  rowMenuTrigger = trigger
   if (!rowMenuName.value) {
     rowMenuUp.value = false
     // 先离屏隐藏挂载：量得真实尺寸前不闪错位（nextTick 是微任务，浏览器尚未绘制）
@@ -624,6 +628,7 @@ async function toggleRowMenu(name: string, e: MouseEvent) {
   rowMenuName.value = name
   await nextTick()
   placeRowMenu(trigger)
+  focusRowMenuItem('first') // 打开即移焦首个可用项（P2-8）
 }
 
 function placeRowMenu(trigger: HTMLElement) {
@@ -642,7 +647,38 @@ function placeRowMenu(trigger: HTMLElement) {
     : { left: `${left}px`, top: `${rect.bottom + MENU_GAP}px`, visibility: 'visible' }
 }
 
-function closeRowMenu() { rowMenuName.value = '' }
+function closeRowMenu(restoreFocus = false) {
+  const trigger = rowMenuTrigger
+  rowMenuName.value = ''
+  // Esc/再点触发钮才回焦触发钮；外点/滚动/缩放/列表复采不回焦，避免与用户新焦点打架。
+  if (restoreFocus && trigger?.isConnected) trigger.focus()
+}
+// 面板内可用项（跳过 disabled）——箭头/Home/End 导航的候选集。
+function rowMenuButtons(): HTMLButtonElement[] {
+  return Array.from(rowMenuPanelEl.value?.querySelectorAll<HTMLButtonElement>('button.row-menu-item:not(:disabled)') ?? [])
+}
+function focusRowMenuItem(which: 'first' | 'last') {
+  const btns = rowMenuButtons()
+  if (!btns.length) return
+  ;(which === 'first' ? btns[0] : btns[btns.length - 1]).focus()
+}
+// ↑↓ 环形步进、Home/End 跳首尾（role=menu 的标准键盘契约）；组字期不劫持。
+function onRowMenuKeyNav(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  const btns = rowMenuButtons()
+  if (!btns.length) return
+  const idx = btns.indexOf(document.activeElement as HTMLButtonElement)
+  let next = -1
+  switch (e.key) {
+    case 'ArrowDown': next = idx < 0 ? 0 : (idx + 1) % btns.length; break
+    case 'ArrowUp': next = idx < 0 ? btns.length - 1 : (idx - 1 + btns.length) % btns.length; break
+    case 'Home': next = 0; break
+    case 'End': next = btns.length - 1; break
+    default: return
+  }
+  e.preventDefault()
+  btns[next].focus()
+}
 // 菜单项点击：执行动作但**不关面板**（常驻语义见上方注释块）。会复采列表的动作
 // （文件/设默认，及后续走完的导出等）经 instances watch 自然收——"数据复采才关"；
 // 展开表单类动作（导出/迁移/克隆/瘦身/详情/wsl.conf）面板继续挂着，供连点多项。
@@ -652,7 +688,8 @@ function onRowMenuDocDown(e: Event) {
   if (rowMenuName.value && !t?.closest?.('.row-menu') && !t?.closest?.('.row-menu-panel')) closeRowMenu()
 }
 function onRowMenuDocKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') closeRowMenu()
+  if (e.key === 'Escape') { closeRowMenu(true); return }
+  onRowMenuKeyNav(e)
 }
 // 锚点失效即收：滚动（capture 收全部祖先容器）与缩放后 fixed 坐标不再对准触发钮。
 function onRowMenuAnchorLost() { closeRowMenu() }
@@ -670,7 +707,7 @@ watch(rowMenuName, (open) => {
   }
 })
 // 列表复采后行可能位移/增删，旧坐标不再可信：收。
-watch(() => props.instances, closeRowMenu)
+watch(() => props.instances, () => closeRowMenu())
 
 onMounted(() => {
   loadExportRecords()
@@ -690,7 +727,7 @@ onBeforeUnmount(() => {
       <h3>本机发行版 ({{ instances.length }})</h3>
       <div class="btn-group distro-head-actions">
         <button class="btn btn-secondary btn-small" :disabled="instLoading" @click="loadInstances">
-          {{ instLoading ? '刷新中…' : '↻ 刷新列表' }}
+          ↻ 刷新列表<span v-if="instLoading" class="btn-spin" aria-hidden="true"></span>
         </button>
       </div>
     </div>
@@ -989,7 +1026,7 @@ onBeforeUnmount(() => {
          （遮挡根因与翻转/钳制策略见 script 注释；面板内容单一来源 rowMenuItems） -->
     <Teleport to="body">
       <div v-if="rowMenuItems.length" ref="rowMenuPanelEl" class="row-menu-panel" role="menu"
-        :class="{ up: rowMenuUp }" :style="rowMenuStyle" @keydown.esc.stop="closeRowMenu">
+        :class="{ up: rowMenuUp }" :style="rowMenuStyle" @keydown.esc.stop="closeRowMenu(true)">
         <button v-for="item in rowMenuItems" :key="item.key" class="row-menu-item" role="menuitem"
           :disabled="item.disabled" :class="{ active: item.active }" :title="item.title"
           @click="rowMenuAction(item.run)">{{ item.label }}</button>
@@ -1082,6 +1119,13 @@ onBeforeUnmount(() => {
 .row-menu-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .row-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
 .row-menu-item.active { color: var(--color-primary); }
+/* P2-12：忙时保留原词 + 尾部内联 spinner 防宽度骤缩抖动（WslReadinessPanel 形制） */
+.btn-spin {
+  width: 9px; height: 9px; margin-left: 6px; display: inline-block; vertical-align: 0;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: hx-spin 750ms linear infinite;
+}
+@keyframes hx-spin { to { transform: rotate(360deg); } }
 
 .radio-label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-sm); color: var(--color-text); cursor: pointer; }
 .radio-label input[type='radio'] { accent-color: var(--color-primary); margin: 0; }

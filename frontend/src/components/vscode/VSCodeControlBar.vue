@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Snapshot } from '../../../bindings/hanxi/internal/modules/vscode/instance/models'
 import type { Status } from '../../../bindings/hanxi/internal/modules/vscode/models'
 import type { VSCodeForm } from '../../adapters/vscode'
@@ -13,6 +14,11 @@ const props = defineProps<{
   uptime: number
   busy: boolean
   canOpenDir: boolean
+  /** 状态真相（P1-2，复刻 ManagedControlBar stale 三件套）：共享 store 的 GetStatus
+   *  最近一次失败时降灰灯 + stale-tag——双形态快照同源同一次 RPC，旧快照不得冒充
+   *  实时「运行中」。缺省 false/0 向后兼容（独立挂载/测试）。 */
+  statusError?: boolean
+  lastStatusAt?: number
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +27,13 @@ const emit = defineEmits<{
   'open-dir': []
   'select-versions': []
 }>()
+
+// stale 悬停指引（同 ManagedControlBar 口径）：最近一次成功取态时刻，从未成功则如实说。
+const staleTip = computed(() =>
+  props.lastStatusAt
+    ? `最近一次成功同步 ${new Date(props.lastStatusAt).toLocaleTimeString()}；此后状态获取持续失败，显示值为最后已知事实`
+    : '尚未成功取得过状态',
+)
 
 function banner(): { tone: 'warn' | 'error' | 'ok'; text: string } | null {
   const snap = props.snap
@@ -46,13 +59,14 @@ function banner(): { tone: 'warn' | 'error' | 'ok'; text: string } | null {
     <div class="control-top">
       <div class="control-status">
         <span class="form-tag" :class="form">{{ form === 'portable' ? '便携版' : '安装版' }}</span>
-        <span class="vc-status-light" :class="snap?.state || ''"></span>
+        <span class="vc-status-light" :class="statusError ? 'stale' : (snap?.state || '')"></span>
         <span class="status-word">{{ toolStateMeta(snap?.state || '').text }}</span>
-        <template v-if="snap?.state === 'running' && snap.version">
+        <span v-if="statusError" class="stale-tag" :title="staleTip">状态暂不可确认</span>
+        <template v-if="!statusError && snap?.state === 'running' && snap.version">
           <span class="ver-pill">{{ snap.version }}</span>
           <span v-if="snap.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
         </template>
-        <span v-if="snap?.state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptime) }}</span>
+        <span v-if="!statusError && snap?.state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptime) }}</span>
       </div>
       <div class="control-btns">
         <button
@@ -100,6 +114,13 @@ function banner(): { tone: 'warn' | 'error' | 'ok'; text: string } | null {
 .vc-status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .vc-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .vc-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
+/* P1-2：状态 RPC 失败降灰档（同 ManagedControlBar .status-light.stale 口径） */
+.vc-status-light.stale { background: var(--color-text-subtle); box-shadow: none; animation: none; }
+.stale-tag {
+  font-size: var(--text-xs); color: var(--color-text-muted);
+  border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+  padding: 1px 8px; cursor: help;
+}
 .inline-action {
   display: inline;
   padding: 0;

@@ -545,7 +545,8 @@ export interface ManagedCopySpec {
    * 票据 message）：返回空串=走 message 兜底（recordly「校验并静默安装…」族）。
    */
   stageWord?(stage: string, progress: NormalizedProgress): string
-  /** 远程表已装 chip 色调（缺省 'ghost' 幽灵钮形；'positive' 语义色片形）。 */
+  /** 远程表已装 chip 色调（缺省/'ghost' 渲染为中性静态标签 chip chip-neutral——
+   *  静态事实非动作，无悬停伪装；'positive' 语义色片形）。 */
   installedChipTone?: 'ghost' | 'positive'
   /** 卸载钮常态 title（非运行中版本卡；缺省无 title）。 */
   uninstallIdleHint?: string

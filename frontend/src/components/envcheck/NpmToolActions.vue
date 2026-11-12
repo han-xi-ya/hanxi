@@ -113,14 +113,14 @@ watch(() => props.logLines.length, async () => {
 .npm-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 .panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .panel-heading strong { color: var(--color-text); font-size: var(--text-sm); }
-.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
 .latest-version { color: var(--color-text-muted); font-size: var(--text-xs); }
-.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: var(--text-sm); line-height: 1.45; }
+.relation-text { margin: 0; padding: 6px 8px; border-radius: var(--radius-chip); font-size: var(--text-sm); line-height: 1.45; }
 .relation-ok { background: var(--state-positive-soft); color: var(--state-positive); }
 .relation-update { background: var(--state-information-soft); color: var(--state-information); }
 .relation-neutral { background: var(--surface-hover); color: var(--color-text-muted); }
-.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; margin: 0; }
-.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-xs); line-height: 1.5; }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: var(--radius-chip); background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; margin: 0; }
+.detail-warn { margin: 0; padding: 6px 8px; border-radius: var(--radius-chip); background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-xs); line-height: 1.5; }
 .op-running { display: flex; align-items: center; gap: 7px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .op-spinner { width: 12px; height: 12px; border: 2px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: npm-spin 0.8s linear infinite; flex: none; }
 @keyframes npm-spin { to { transform: rotate(360deg); } }

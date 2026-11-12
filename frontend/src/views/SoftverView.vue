@@ -466,7 +466,7 @@ onActivated(async () => {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 8px 0; border-top: 1px dashed var(--color-border);
 }
-.dir-row.row-primary { border-radius: 8px; }
+.dir-row.row-primary { border-radius: var(--radius-control); }
 .dir-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .dir-name { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); flex: none; }
 .dir-ops { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }

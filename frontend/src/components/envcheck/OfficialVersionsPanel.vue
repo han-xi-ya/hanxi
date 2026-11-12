@@ -77,17 +77,17 @@ function relationClass(relation: string) {
 .official-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .panel-heading strong { color: var(--color-text); font-size: var(--text-sm); }
-.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
 .panel-state, .fetched-at { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
 .fetched-at { font-size: var(--text-micro); }
-.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: var(--radius-chip); background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; }
 .channel-list { display: flex; flex-direction: column; gap: 10px; }
 .channel-block { display: flex; flex-direction: column; gap: 6px; }
 .channel-block + .channel-block { padding-top: 9px; border-top: 1px dashed var(--color-border); }
 .channel-heading { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .channel-label { color: var(--color-text); font-size: var(--text-sm); font-weight: 700; }
 .channel-detail { color: var(--color-text-muted); font-size: var(--text-micro); }
-.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: var(--text-sm); line-height: 1.45; }
+.relation-text { margin: 0; padding: 6px 8px; border-radius: var(--radius-chip); font-size: var(--text-sm); line-height: 1.45; }
 .relation-ok { background: var(--state-positive-soft); color: var(--state-positive); }
 .relation-update { background: var(--state-information-soft); color: var(--state-information); }
 .relation-neutral { background: var(--surface-hover); color: var(--color-text-muted); }

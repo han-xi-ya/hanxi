@@ -66,7 +66,9 @@ function warnOf(): string {
 .channel-row { display: flex; align-items: center; gap: 10px; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 14px; font-size: var(--text-base); flex-wrap: wrap; }
 .channel-row .k { color: var(--color-text-subtle); }
 .channel-seg { display: flex; background: var(--surface-hover); border-radius: var(--radius-chip); padding: 2px; gap: 2px; }
-.channel-seg button { border: none; background: transparent; padding: 4px 12px; font-size: var(--text-sm); border-radius: 5px; color: var(--color-text-muted); cursor: pointer; transition: color var(--motion-base) ease, background var(--motion-base) ease; }
+.channel-seg button { border: none; background: transparent; padding: 4px 12px; font-size: var(--text-sm); border-radius: var(--radius-chip); color: var(--color-text-muted); cursor: pointer; transition: color var(--motion-base) ease, background var(--motion-base) ease; }
+/* 非选中悬停软底档：分段钮可点性不再只靠选中态自明（P2-15） */
+.channel-seg button:hover:not(:disabled):not(.active) { background: var(--surface-soft); color: var(--color-text); }
 .channel-seg button.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 .beta-warn { font-size: var(--text-sm); color: var(--state-warning); }
 </style>

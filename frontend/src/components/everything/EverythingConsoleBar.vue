@@ -18,6 +18,10 @@ const props = defineProps<{
   esBusy: boolean
   esProgress: DownloadTicket | null
   keyword: string
+  /** 状态真相（P1-2，复刻 ManagedControlBar stale 三件套）：RPC 最近一次失败时
+   *  降灰灯 + stale-tag，旧快照不得冒充实时「运行中」。缺省 false/0 向后兼容。 */
+  statusError?: boolean
+  lastStatusAt?: number
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +40,13 @@ const emit = defineEmits<{
 const isRunningOrStarting = computed(() => props.state === 'running' || props.state === 'starting')
 const isExternal = computed(() => props.state === 'external')
 
+// stale 悬停指引（同 ManagedControlBar 口径）：最近一次成功取态时刻，从未成功则如实说。
+const staleTip = computed(() =>
+  props.lastStatusAt
+    ? `最近一次成功同步 ${new Date(props.lastStatusAt).toLocaleTimeString()}；此后状态获取持续失败，显示值为最后已知事实`
+    : '尚未成功取得过状态',
+)
+
 // 受控输入：先 emit update:keyword 同步回写父级值，再 emit keyword-input 交父级跑防抖——
 // 时序须「先更新值、后读值」，反序则防抖侧读到旧值。
 function onInput(e: Event) {
@@ -48,13 +59,14 @@ function onInput(e: Event) {
   <div class="control-bar">
     <div class="control-top">
       <div class="control-status">
-        <span class="ev-status-light" :class="state"></span>
+        <span class="ev-status-light" :class="statusError ? 'stale' : state"></span>
         <span class="status-word">{{ stateText }}</span>
-        <template v-if="isRunningOrStarting && runningVersion">
+        <span v-if="statusError" class="stale-tag" :title="staleTip">状态暂不可确认</span>
+        <template v-if="!statusError && isRunningOrStarting && runningVersion">
           <span class="ver-pill">{{ runningVersion }}</span>
           <span v-if="pid" class="mono pid-tag">PID {{ pid }}</span>
         </template>
-        <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
+        <span v-if="!statusError && state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
       </div>
       <div class="control-btns">
         <button
@@ -69,6 +81,9 @@ function onInput(e: Event) {
           :title="state === 'running' ? '唤起搜索窗口' : state === 'starting' ? '启动中…' : '直接启动并打开搜索窗口'"
           @click="emit('open-window')"
         >🗔 打开窗口</button>
+        <!-- P2-5 审计要求 title 改「先 -quit 优雅请求，无响应强制结束；管理员实例需托盘自退」
+             口径——但 EverythingView.spec「external 快照…title 指引导轨退出」断言锁死
+             现词面（勿改 spec 契约），本轮保留并注记，词面迁移待主会话连同 spec 一起裁。 -->
         <button
           class="btn btn-danger-outline btn-small"
           :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
@@ -83,6 +98,7 @@ function onInput(e: Event) {
         class="search-input"
         type="text"
         :value="keyword"
+        aria-label="搜索文件名与路径"
         placeholder="输入即搜 —— 支持 Everything 语法（如 *.go | D:\项目）"
         @input="onInput"
         @keyup.enter="emit('keyword-enter')"
@@ -107,23 +123,23 @@ function onInput(e: Event) {
 
 <style scoped>
 /* ---------- 顶部整合控制条（状态 + 按钮 + 搜索框，紧凑单卡） ---------- */
-.control-bar {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 10px;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
-}
-.control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 底色/边框/圆角落全局 .control-bar 原子（--radius-element）；此处仅留搜索条
+   整合卡的内距/缝隙真差（12/14 与 10 vs 全局 10/12 与 8，P2-16 出清裸 radius 后保留）。 */
+.control-bar { padding: 12px 14px; gap: 10px; }
 /* 注意：状态卡信号灯类名带 ev- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
+/* P1-2：状态 RPC 失败降灰档（同 ManagedControlBar .status-light.stale 口径）——
+   中性灰无光晕无脉冲，旧快照不冒充实时灯色 */
+.ev-status-light.stale { background: var(--color-text-subtle); box-shadow: none; animation: none; }
+.stale-tag {
+  font-size: var(--text-xs); color: var(--color-text-muted);
+  border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+  padding: 1px 8px; cursor: help;
+}
 .ev-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
 .ev-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 .ev-status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .ev-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .ev-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
-.status-word { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
-.ver-pill { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
-.pid-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.uptime-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- 搜索行 ---------- */
 .search-line { display: flex; gap: 8px; align-items: center; }
@@ -133,10 +149,14 @@ function onInput(e: Event) {
 .ev-status-pill.idle { background: var(--surface-hover); color: var(--color-text-muted); }
 .search-input {
   flex: 1; padding: 8px 12px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
-  font-size: var(--text-base); background: var(--surface-soft); color: var(--color-text); outline: none;
+  font-size: var(--text-base); background: var(--surface-soft); color: var(--color-text);
   transition: border-color var(--motion-base) ease;
 }
 /* 2026-10-26 机主裁决（输入焦点形制归主流）：焦点只换蓝边，摘掉双环派的
-   外圈光晕；键盘可达性由全局 :focus-visible 环承担。 */
+   外圈光晕；键盘可达性由全局 :focus-visible 环承担。原 outline:none 压死全局环，
+   按 HistoryPanel C10 先例删除——鼠标态仍只换边，键盘环交还 :focus-visible。 */
 .search-input:focus { border-color: var(--color-primary); }
+/* P2-16：.control-bar/.control-top/.control-status/.control-btns/.status-word/.ver-pill/
+   .pid-tag/.uptime-tag 的 scoped 等值副本已删净，落回 components.css 托管家族全局原子
+   （radius 10px/4px 裸值随副本一并出清，统一 --radius-element/--radius-pill）。 */
 </style>

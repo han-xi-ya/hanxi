@@ -43,10 +43,10 @@ async function copyCommand() {
 .upgrade-hint { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 7px; }
 .hint-heading { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .hint-heading strong { color: var(--color-text); font-size: var(--text-sm); }
-.manual-chip { padding: 1px 6px; border-radius: 10px; background: var(--surface-hover); color: var(--color-text-muted); font-size: var(--text-micro); }
+.manual-chip { padding: 1px 6px; border-radius: var(--radius-pill); background: var(--surface-hover); color: var(--color-text-muted); font-size: var(--text-micro); }
 .state-text, .source-hint, .safety-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
 .command-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 5px; background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: var(--radius-chip); background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 /* 小钮形制落回全局 .btn .btn-secondary .btn-micro 三件套（高/内距取标准档，设计归一在册目视项）；
    本地仅留主色描边配色与不收缩两项独有差 */
 .copy-button { flex-shrink: 0; background: transparent; color: var(--color-primary); }

@@ -43,7 +43,7 @@ const remoteList = computed(() => remoteForm.value === 'installer' ? props.relea
     </div>
     <div class="btn-group">
       <button class="btn btn-secondary btn-small" :disabled="busy" @click="emit('import')">⇥ 导入本地便携版</button>
-      <button class="btn btn-secondary btn-small" :disabled="loading" @click="emit('refresh')">{{ loading ? '刷新中…' : '↻ 刷新远程列表' }}</button>
+      <button class="btn btn-secondary btn-small" :disabled="loading" @click="emit('refresh')">↻ 刷新远程列表<span v-if="loading" class="btn-spin" aria-hidden="true"></span></button>
     </div>
   </div>
 
@@ -96,4 +96,11 @@ const remoteList = computed(() => remoteForm.value === 'installer' ? props.relea
 <style scoped>
 .vc-remote-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .vc-form-switch { display: flex; gap: 6px; }
+/* P2-12：忙时保留原词 + 尾部内联 spinner 防宽度骤缩抖动（WslReadinessPanel 形制） */
+.btn-spin {
+  width: 9px; height: 9px; margin-left: 6px; display: inline-block; vertical-align: 0;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: hx-spin 750ms linear infinite;
+}
+@keyframes hx-spin { to { transform: rotate(360deg); } }
 </style>

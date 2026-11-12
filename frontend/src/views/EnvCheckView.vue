@@ -581,7 +581,9 @@ onMounted(() => {
           <span class="usage-title">Git 全局配置 <span class="chip usage-verdict" :class="`chip-${gitCfgMeta(gitConfig?.state).tone}`">{{ gitCfgMeta(gitConfig?.state).text }}</span></span>
           <span class="usage-sub" aria-live="polite">
             <template v-if="gitConfigLoading">正在读取 git config --global --list…</template>
-            <template v-else-if="gitConfigError">{{ gitConfigError }}</template>
+            <!-- P2-10：读取失败不得混在 muted 小字里——danger 色 + role=alert，
+                 右侧「重新读取」即内联重试入口 -->
+            <span v-else-if="gitConfigError" class="usage-error" role="alert">{{ gitConfigError }}</span>
             <template v-else-if="gitConfig?.state === 'configured'">共 {{ gitConfigItems.length }} 条，敏感条目已就地打码</template>
             <template v-else-if="gitConfig?.state === 'unconfigured'">git 可用，但尚无全局配置（~/.gitconfig 不存在或无条目）</template>
             <template v-else-if="gitConfig?.state === 'not-installed'">{{ gitConfig?.detail }}</template>
@@ -611,7 +613,7 @@ onMounted(() => {
           <span class="usage-title">空间家底 <span class="chip chip-neutral">安装目录 · 依赖缓存</span></span>
           <span class="usage-sub" aria-live="polite">
             <template v-if="usageLoading">正在测量（整场 30 秒封顶，超时项按"≥"下限呈现）…</template>
-            <template v-else-if="usageError">{{ usageError }}</template>
+            <span v-else-if="usageError" class="usage-error" role="alert">{{ usageError }}</span>
             <template v-else-if="usageAt">测量于 {{ usageAt }}{{ usageAnyPartial ? ' · 含下限估算项' : '' }}</template>
             <template v-else>测量各开发工具的本体与缓存目录，看清磁盘肥瘦</template>
           </span>
@@ -699,7 +701,7 @@ onMounted(() => {
               <button v-if="!ompOfficial?.officialPresent" class="btn btn-primary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('install')">⚡ 安装（官方脚本）</button>
               <button v-else class="btn btn-secondary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" title="omp update 增量更新到最新版（在跑的会话仍是旧镜像，新终端生效）" @click="runOmpOfficial('update')">↑ 更新到最新版</button>
               <button class="link-button" :disabled="ompBusy || ompOp?.stage === 'running' || !ompOfficial?.officialPresent" title="omp update --force 原地重装（幂等，已是最新版也重取）" @click="runOmpOfficial('repair')">修复/重装</button>
-              <button v-if="ompOfficial?.officialPresent || ompOfficial?.onPath" class="btn btn-ghost btn-small text-danger" :disabled="ompBusy" @click="runOmpOfficial('uninstall')">卸载</button>
+              <button v-if="ompOfficial?.officialPresent || ompOfficial?.onPath" class="btn btn-danger-outline btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('uninstall')">卸载</button>
               <button class="link-button" :disabled="!ompOfficial?.dataDir" title="打开 ~/.omp（配置、凭据、会话与记忆库）" @click="openOmpDataDir()">打开数据根</button>
             </div>
           </article>
@@ -792,6 +794,9 @@ onMounted(() => {
 .usage-head .btn { margin-left: auto; }
 .usage-title { font-weight: 700; }
 .usage-sub { color: var(--color-text-muted); font-size: var(--text-sm); }
+/* P2-10：读取/测量失败文案升 danger 显眼档（字号随 .usage-sub 继承），
+   与 muted 常态注记分档；重试入口仍是行首「重新读取/重新测量」钮。 */
+.usage-error { color: var(--state-danger); font-weight: 600; }
 .usage-tool { display: flex; flex-direction: column; gap: 4px; }
 .usage-tool-name { font-weight: 600; font-size: var(--text-sm); color: var(--color-text-subtle); }
 .usage-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -838,7 +843,9 @@ onMounted(() => {
 /* 行内复制钮：卡面静默、悬停/聚焦浮现（与 OcrView 逐行复制同交互族） */
 .meta-copy { opacity: 0; flex-shrink: 0; transition: opacity var(--motion-base) ease; }
 .tool-card:hover .meta-copy, .tool-card:focus-within .meta-copy { opacity: 1; }
-.tool-hint { font-size: var(--text-sm); border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
+/* 触屏无 hover：复制钮恒显，可发现性不依赖指针悬停（OcrView P2-14 同款漏网面） */
+@media (pointer: coarse) { .meta-copy { opacity: 1; } }
+.tool-hint { font-size: var(--text-sm); border-radius: var(--radius-chip); padding: 6px 8px; line-height: 1.5; }
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }
 .hint-error { background: var(--state-danger-soft); color: var(--state-danger); }
