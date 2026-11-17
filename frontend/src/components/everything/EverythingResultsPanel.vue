@@ -42,7 +42,7 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(r, i) in results" :key="i">
+          <tr v-for="(r, i) in results" :key="resultFullPath(r)">
             <!-- table-layout:fixed 的列宽以首行单元格为准；首行与表头同步绑定，保证列对齐 -->
             <td
               class="result-name"
