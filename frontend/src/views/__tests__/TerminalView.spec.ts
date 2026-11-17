@@ -20,7 +20,7 @@
 import { mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { KeepAlive, defineComponent, h as createVNode, nextTick, ref } from 'vue'
 import TerminalView from '../TerminalView.vue'
 import {
   decodeFrame,
@@ -764,5 +764,39 @@ describe('TerminalView xterm 引擎装配（DOM 渲染器与 CJK 宽度）', () 
     t.fireData('幽灵输入')
     expect(s.sent).toHaveLength(sentBefore)
     expect(w.find('.tc-slot-current .chip').text()).toBe('重连中')
+  })
+
+  it('KeepAlive 停用与激活：停用断流，激活重连并校准 fit 尺寸', async () => {
+    const show = ref(true)
+    svc.ListTerminals.mockResolvedValue([makeWireRow()])
+    const Host = defineComponent({
+      render: () => createVNode(KeepAlive, null, [show.value ? createVNode(TerminalView, { key: 'view' }) : createVNode('div', { key: 'empty' })]),
+    })
+    const wrapper = mount(Host, { attachTo: document.body })
+    current = wrapper as unknown as VueWrapper
+    await flushMicrotasks()
+    await nextTick()
+
+    expect(h.sockets).toHaveLength(1)
+    const s1 = lastSocket()
+    s1.fireOpen()
+    s1.fireMessage(controlPayload({ op: 'ready' }))
+    await nextTick()
+
+    const t = term()
+    const fitAddon = t.addons.find((a) => typeof (a as { fitCount?: number }).fitCount === 'number') as { fitCount: number }
+    const fitBefore = fitAddon.fitCount
+
+    show.value = false
+    await nextTick()
+    await flushMicrotasks()
+    expect(s1.closed).toBe(true)
+
+    show.value = true
+    await nextTick()
+    await flushMicrotasks()
+
+    expect(h.sockets).toHaveLength(2)
+    expect(fitAddon.fitCount).toBeGreaterThan(fitBefore)
   })
 })

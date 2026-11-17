@@ -714,8 +714,15 @@ export function useTerminal() {
     searchAddon = null
   }
 
-  // KeepAlive：停用即断通道（进程活着，"窗口重开需重新连接"），激活自动续接。
+  // KeepAlive：停用即断通道（进程活着，"窗口重开需重新连接"），激活自动续接并重校准尺寸。
   onActivated(() => {
+    if (term) {
+      void nextTick(() => {
+        fitSafely()
+        const dims = termDims()
+        if (dims.cols !== lastSentDims.cols || dims.rows !== lastSentDims.rows) sendResizeFrame(dims.cols, dims.rows)
+      })
+    }
     if (currentRow.value?.alive && connStatus.value === 'detached') openStream()
   })
   onDeactivated(() => {
