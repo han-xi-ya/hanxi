@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import * as EarTrumpetAPI from '../../bindings/hanxi/internal/modules/eartrumpet/eartrumpetservice'
 import type { PackageSnapshot } from '../../bindings/hanxi/internal/modules/eartrumpet/models'
 import MsixToolHeader from '../components/tool/MsixToolHeader.vue'
@@ -64,6 +64,15 @@ async function refreshRemote() {
   }
 }
 
+let launchTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearLaunchTimer() {
+  if (launchTimer !== null) {
+    clearTimeout(launchTimer)
+    launchTimer = null
+  }
+}
+
 async function launch() {
   const res = await runLaunch(() => EarTrumpetAPI.Launch())
   if (!res.ok) {
@@ -71,7 +80,11 @@ async function launch() {
     return
   }
   showToast('已提交 EarTrumpet 启动请求')
-  window.setTimeout(() => { void refresh() }, 1500)
+  clearLaunchTimer()
+  launchTimer = setTimeout(() => {
+    launchTimer = null
+    void refresh()
+  }, 1500)
 }
 
 async function exit() {
@@ -129,6 +142,8 @@ onActivated(() => {
   if (!firstActivatedSkipped) { firstActivatedSkipped = true; return }
   void refresh()
 })
+onDeactivated(clearLaunchTimer)
+onBeforeUnmount(clearLaunchTimer)
 </script>
 
 <template>

@@ -11,7 +11,7 @@
 // 必须在组件 setup 同步期内调用：内部经 useWailsEvent 注册两个事件订阅
 // （wechat:context-token-updated / wechat:message-received，2 订阅/2 注销配对，勿增删改同名订阅），
 // 并经 onMounted/onUnmounted 完成账号装载、离线消息补拉与 QR 轮询定时器兜底清理。
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import QRCode from 'qrcode'
 import * as WechatAPI from '../../bindings/hanxi/internal/modules/wechat'
 import type { WechatAccountState, QRInfo, InboundMessage } from '../../bindings/hanxi/internal/modules/wechat/models'
@@ -770,6 +770,17 @@ export function useWechatBot() {
       } catch { /* 静默，不影响主流程 */ }
     }
     scrollToBottom()
+  })
+
+  onDeactivated(() => {
+    stopQRPoll()
+    stopQRSuccessTimer()
+  })
+
+  onActivated(() => {
+    if (showBindModal.value && qrInfo.value && qrStatusType.value !== 'confirmed' && qrStatusType.value !== 'expired') {
+      startQRPoll(qrInfo.value.qrcode, qrSession)
+    }
   })
 
   onUnmounted(() => {

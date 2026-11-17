@@ -75,7 +75,7 @@ async function flushMicrotasks(times = 20) {
 async function mountView() {
   const show = ref(true)
   const Host = defineComponent({
-    render: () => (show.value ? h(KeepAlive, null, h(WechatBotView)) : h('div')),
+    render: () => h(KeepAlive, null, [show.value ? h(WechatBotView, { key: 'view' }) : h('div', { key: 'empty' })]),
   })
   const wrapper = mount(Host, { attachTo: document.body })
   await flushMicrotasks()
@@ -167,6 +167,39 @@ describe('WechatBotView 扫码绑定状态机', () => {
     await vi.advanceTimersByTimeAsync(50)
     await flushMicrotasks()
     expect(svc.GetLoginQRCode.mock.calls.length).toBeGreaterThan(firstCalls) // 自动重取
+    wrapper.unmount()
+  })
+
+  it('KeepAlive 停用自动暂停扫码轮询，激活后恢复', async () => {
+    vi.useFakeTimers()
+    stubs([acc('a1', 'A')])
+    svc.GetLoginQRCode.mockResolvedValue({ qrcode: 'QR123' })
+    svc.CheckQRStatus.mockResolvedValue({ status: 'wait' })
+    const { wrapper, show } = await mountView()
+    await wrapper.find('.btn-bind-account').trigger('click')
+    await flushMicrotasks(40)
+    expect(svc.CheckQRStatus).toHaveBeenCalledTimes(0)
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushMicrotasks()
+    expect(svc.CheckQRStatus).toHaveBeenCalledTimes(1)
+
+    show.value = false
+    await nextTick()
+    await flushMicrotasks()
+
+    await vi.advanceTimersByTimeAsync(4500)
+    await flushMicrotasks()
+    expect(svc.CheckQRStatus).toHaveBeenCalledTimes(1)
+
+    show.value = true
+    await nextTick()
+    await flushMicrotasks()
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushMicrotasks()
+    expect(svc.CheckQRStatus).toHaveBeenCalledTimes(2)
+
     wrapper.unmount()
   })
 })

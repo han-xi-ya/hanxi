@@ -37,7 +37,7 @@ function stubDefaults(snap: Record<string, unknown>, remote = '') {
 async function mountView() {
   const show = ref(true)
   const Host = defineComponent({
-    render: () => (show.value ? h(KeepAlive, null, h(EarTrumpetView)) : h('div')),
+    render: () => h(KeepAlive, null, [show.value ? h(EarTrumpetView, { key: 'view' }) : h('div', { key: 'empty' })]),
   })
   const wrapper = mount(Host, {
     attachTo: document.body,
@@ -136,6 +136,20 @@ describe('EarTrumpetView 操作流', () => {
     expect(svc.GetStatus.mock.calls.length).toBe(before) // 未到期不复刷
     await vi.advanceTimersByTimeAsync(2)
     expect(svc.GetStatus.mock.calls.length).toBe(before + 1)
+    vi.useRealTimers()
+    wrapper.unmount()
+  })
+
+  it('启动后若在 1500ms 内卸载或停用，不触发挂起的复刷定时器', async () => {
+    vi.useFakeTimers()
+    stubDefaults(snapOf({ installed: true }))
+    const { wrapper, show } = await mountView()
+    await findBtn(wrapper, '启动').trigger('click')
+    const before = svc.GetStatus.mock.calls.length
+    show.value = false
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(svc.GetStatus.mock.calls.length).toBe(before)
     vi.useRealTimers()
     wrapper.unmount()
   })
