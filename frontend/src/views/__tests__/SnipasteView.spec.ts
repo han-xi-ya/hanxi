@@ -194,6 +194,21 @@ describe('SnipasteView 版本管理', () => {
     wrapper.unmount()
   })
 
+  it('唯一已装版本即在用中也放行卸载（对齐后端防死锁逃生口，不再被 guard 卡墙）', async () => {
+    stubDefaults({ state: 'stopped' }, [installed222], [], '2.2.2')
+    const { wrapper } = await mountInKeepAlive()
+    const uninstall = wrapper.findAll('.installed-card')[0].findAll('button').find((b) => b.text() === '卸载')!
+    expect(uninstall.attributes('disabled')).toBeUndefined()
+    expect(uninstall.attributes('title')).toBe('卸载此版本')
+    await uninstall.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.RemoveVersion).toHaveBeenCalledWith('2.2.2')
+    expect(useToast().toastMsg.value).toBe('已卸载 Snipaste 2.2.2')
+    wrapper.unmount()
+  })
+
   it('点下载：先挂 pending 票据并显示本地化阶段文案', async () => {
     stubDefaults({ state: 'stopped' }, [], [release223], '')
     svc.DownloadVersion.mockReturnValue(new Promise(() => {})) // 挂起，观察票据

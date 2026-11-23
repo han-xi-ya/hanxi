@@ -182,7 +182,10 @@ function isRunningVersion(version: string): boolean {
 }
 
 function cannotRemoveVersion(item: SnipasteVersionInfo): boolean {
-  return item.version === activeVersion.value || isRunningVersion(item.version)
+  if (isRunningVersion(item.version)) return true
+  // 在用版本只有多版本时不可卸；**唯一已装版本放行**——与后端 RemoveVersion
+  // 防死锁口径逐字对齐（它是脱管工具进入"未安装"态的唯一通道，前端禁死=用户卡墙）。
+  return item.version === activeVersion.value && installed.value.length > 1
 }
 
 function removeDisabledTitle(item: SnipasteVersionInfo): string {
@@ -191,7 +194,7 @@ function removeDisabledTitle(item: SnipasteVersionInfo): string {
     if (instanceState() === 'quitting') return '该版本正在退出'
     return '该版本正在运行，请先退出进程'
   }
-  if (item.version === activeVersion.value) return '当前使用版本不可卸载，请先选择其他版本'
+  if (item.version === activeVersion.value && installed.value.length > 1) return '当前使用版本不可卸载，请先选择其他版本'
   return '卸载此版本'
 }
 
