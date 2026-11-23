@@ -278,7 +278,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <PageHeader title="AI 接入" subtitle="让 Claude Code / Codex / Cursor 里的 AI 助手直接使用 hanxi 的本机能力。只需两步：先在下方点「接入」，再打开愿意让 AI 查询的内容开关。每一步都先预览、你确认了才动文件；随时可关、可断开。">
+    <PageHeader title="AI 接入" subtitle="让 Claude Code / Codex / Cursor / omp 里的 AI 助手直接使用 hanxi 的本机能力。只需两步：先在下方点「接入」，再打开愿意让 AI 查询的内容开关。每一步都先预览、你确认了才动文件；随时可关、可断开。">
       <template #actions>
         <span class="chip chip-information">查询只读 · 扫描仅探测不改状态 · hanxi 不替 AI 改任何东西</span>
       </template>
@@ -300,7 +300,7 @@ onMounted(refresh)
         探测客户端配置失败：{{ loadError }}
         <button class="state-action" :disabled="loading" @click="refresh">重试</button>
       </div>
-      <div v-else-if="!(status?.clients ?? []).length" class="ai-empty">未探测到可接入的 AI 客户端（Claude Code / Codex / Cursor），安装后点「重新探测」。</div>
+      <div v-else-if="!(status?.clients ?? []).length" class="ai-empty">未探测到可接入的 AI 客户端（Claude Code / Codex / Cursor / omp），安装后点「重新探测」。</div>
       <div v-else class="client-list">
         <div v-for="c in status?.clients ?? []" :key="c.id" class="client-row">
           <div class="client-main">

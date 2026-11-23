@@ -212,7 +212,7 @@ func (s *McpWizardService) writeIfUnchanged(path string, expected []byte, expect
 
 // —— 服务方法（Wails 绑定面）——
 
-// GetStatus 探测三客户端状态 + access.json 呈现，供分区页首屏。
+// GetStatus 探测四客户端状态 + access.json 呈现，供分区页首屏。
 func (s *McpWizardService) GetStatus() (WizardStatus, error) {
 	r := loadReceipt(s.receiptPath)
 	st := WizardStatus{

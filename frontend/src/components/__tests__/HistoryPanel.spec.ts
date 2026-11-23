@@ -11,8 +11,6 @@ const api = vi.hoisted(() => ({
   List: vi.fn(),
   Delete: vi.fn(),
   Clear: vi.fn(),
-  GetOcrFullText: vi.fn(),
-  SetOcrFullText: vi.fn(),
 }))
 
 vi.mock('@wailsio/runtime', () => ({
@@ -23,18 +21,18 @@ vi.mock('../../../bindings/hanxi/internal/history/historyservice', () => api)
 
 const rec = (over: Record<string, unknown> = {}) => ({
   id: 1,
-  funcType: 'ocr',
-  summary: '识别 a.png → 12 字',
-  input: 'C:\\imgs\\a.png',
-  output: '你好世界',
-  extra: 'ui',
+  funcType: 'portkill',
+  summary: '查询 8080 → 1 监听',
+  input: '8080',
+  output: 'node.exe (PID 4321)',
+  extra: 'query',
   createdAt: '2026-09-17T10:00:00+08:00',
   ...over,
 })
 
 function factory(props: Record<string, unknown> = {}) {
   return mount(HistoryPanel, {
-    props: { funcType: 'ocr', ...props },
+    props: { funcType: 'portkill', ...props },
   })
 }
 
@@ -45,7 +43,7 @@ async function settleTimers() {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  api.List.mockResolvedValue([rec(), rec({ id: 2, summary: '识别 b.png', input: 'C:\\imgs\\b.png' })])
+  api.List.mockResolvedValue([rec(), rec({ id: 2, summary: '查询 3306 → 无监听', input: '3306' })])
   api.Delete.mockResolvedValue(undefined)
   api.Clear.mockResolvedValue(undefined)
 })
@@ -59,10 +57,10 @@ describe('HistoryPanel', () => {
   it('挂载即按桶自取数并渲染列表', async () => {
     const w = factory()
     await settleTimers()
-    expect(api.List).toHaveBeenCalledWith('ocr', '')
+    expect(api.List).toHaveBeenCalledWith('portkill', '')
     expect(w.findAll('tbody tr')).toHaveLength(2)
-    expect(w.text()).toContain('识别 a.png')
-    expect(w.text()).toContain('识别 b.png')
+    expect(w.text()).toContain('查询 8080')
+    expect(w.text()).toContain('查询 3306')
   })
 
   it('keyword 输入 350ms 防抖后才发请求', async () => {
@@ -75,7 +73,7 @@ describe('HistoryPanel', () => {
     vi.advanceTimersByTime(400)
     await settleTimers()
     expect(api.List).toHaveBeenCalledTimes(1)
-    expect(api.List).toHaveBeenCalledWith('ocr', '8080')
+    expect(api.List).toHaveBeenCalledWith('portkill', '8080')
   })
 
   it('快速连发只认最后一次结果（seq 过期丢弃）', async () => {
@@ -147,7 +145,7 @@ describe('HistoryPanel', () => {
     settleConfirm(true)
     await vi.runOnlyPendingTimersAsync()
     await settleTimers()
-    expect(api.Clear).toHaveBeenCalledWith('ocr')
+    expect(api.Clear).toHaveBeenCalledWith('portkill')
   })
 
   it('List 报错时展示降级提示且不炸渲染', async () => {
@@ -160,13 +158,13 @@ describe('HistoryPanel', () => {
 
   it('N20b：标记 token 中文化为 chips，未知 token 原样、失败/拒绝升警示色', async () => {
     api.List.mockResolvedValueOnce([
-      rec({ extra: 'snip|nofull|fail' }),
+      rec({ extra: 'query|elevated|fail' }),
       rec({ id: 3, extra: 'future_token' }),
     ])
     const w = factory()
     await settleTimers()
     const tags = w.findAll('tbody tr')[0].findAll('.hp-tag').map((c) => c.text())
-    expect(tags).toEqual(['框选识别', '未存全文', '失败'])
+    expect(tags).toEqual(['端口查询', '提权终止', '失败'])
     expect(w.findAll('tbody tr')[0].findAll('.hp-tag-danger').length).toBe(1)
     expect(w.findAll('tbody tr')[1].text()).toContain('future_token')
   })
@@ -175,7 +173,7 @@ describe('HistoryPanel', () => {
     api.List.mockResolvedValueOnce([])
     const w = factory()
     await settleTimers()
-    expect(w.find('.hp-empty').text()).toContain('框选')
-    expect(w.find('.hp-empty').text()).toContain('每桶最多')
+    expect(w.find('.hp-empty').text()).toContain('端口查询')
+    expect(w.find('.hp-empty').text()).toContain('UAC 拒绝')
   })
 })

@@ -24,7 +24,7 @@
 | 7 | 双栏外壳 | `App.vue`、`AppNavRail/Sidebar` | 成熟 | 图标轨道(六分组+角标+运行绿点) + 二级面板 + Ctrl+K 命令面板，同一门禁链；三份旧路由表已收编单一来源 |
 | 8 | 错误与产品契约 | `domain/`、`product/` | 成熟 | 统一 AppError（Code/Action/Retryable，前端按 Code 渲染）；产品身份常量 |
 | 9 | 子进程插件体系 | `extapi.LevelExternal` + `PLUGINS_ARCHITECTURE.md` | **仅契约预留** | manifest + JSON-RPC 只有接口占位，未实现；设计文档已标注"历史留档，以 ARCHITECTURE.md 为准" |
-| 10 | MCP 服务面（AI 接入） | `internal/mcp/`、设置"AI 接入"分区、`hanxi mcp` 无头模式 | 复核登记（未深审） | 首盘点后显性成面：工具数与授权键数以 docs/FACTS.md 现值为准（由 docsfacts 闸门锁死，本档不复抄）；设置页提供客户端接入向导 |
+| 10 | MCP 服务面（AI 接入） | `internal/mcp/`、设置"AI 接入"分区、`hanxi mcp` 无头模式 | 复核登记（未深审） | 首盘点后显性成面：工具数与授权键数以 docs/FACTS.md 现值为准（由 docsfacts 闸门锁死，本档不复抄）；设置页提供客户端接入向导（建档四家：Claude Code / Codex / Cursor / omp） |
 
 构建/发布：Taskfile 体系 + 一键脚本（环境自检→build→组装便携包），`task check` 八项质量门（含 Wails 绑定漂移检查）——成熟。
 

@@ -6,8 +6,8 @@
 
 ## 目录
 
-> **编号与索引说明（2026-10-21 结构整理）**：本日志只追加不改写正文，编号因此存在三种合法形态；以下按正文出现顺序补全**全量索引**（共 138 条；2026-10-26 追加 #119–#123 后同步；#113–#118 入库时条目计数未同步，本次实测目录条目由 133 起算；2026-10-31 实测 `grep -c '^- \['` 为 157——上一计数在 #125–#136 两批追加时未同步，本行起每批追加随改）。
-> 1. **重号**：托管系列与平台系列在 8–17 段各自编号，同号不同条目；正文、代码注释与提交历史大量以「#35」「#40」「#79」「#110」这类编号互相引用，**禁止重编号**，新条目一律从最大编号之后续编（现至 142）。
+> **编号与索引说明（2026-10-21 结构整理）**：本日志只追加不改写正文，编号因此存在三种合法形态；以下按正文出现顺序补全**全量索引**（共 138 条；2026-10-26 追加 #119–#123 后同步；#113–#118 入库时条目计数未同步，本次实测目录条目由 133 起算；2026-10-31 实测 `grep -c '^- \['` 为 157——上一计数在 #125–#136 两批追加时未同步，本行起每批追加随改；2026-11-21 追加 #156 后实测为 162；2026-11-23 追加 #157 后实测为 163）。
+> 1. **重号**：托管系列与平台系列在 8–17 段各自编号，同号不同条目；正文、代码注释与提交历史大量以「#35」「#40」「#79」「#110」这类编号互相引用，**禁止重编号**，新条目一律从最大编号之后续编（现至 157）。
 > 2. **连续性核查结论**：主序列 1–123 无缺号（2026-10-26 续编 #119–#123 时按正文标题逐号核对，#113–#118 入库时序列本已连续）；2026-10-31 复核续编段 #124–#142 逐号连续无缺；另有小数编号（0.1、58.1）与两条无编号条目（「iOS Safari 大文件上传」「前后端默认上传上限」，物理位置在第 6、7 条之间），索引如实按正文顺序收录。
 > 3. **乱序**：25 号条目物理上排在 27 之后（追加时未插位），保留原位不移动，以免搅动相邻锚点。
 > 4. **锚点口径**：以下索引按 GitHub slug 规则由正文标题现推（转小写、剥标点、空格转连字符、连字符保留原序列——如 `var(--shadow-panel)` → `var--shadow-panel`）；早期目录里「UPX 标 6 实 7」「WiFi 标 7 实 8 且尾词旧措辞」等悬空锚已全部纠掉。个别渲染器对全角括号折叠规则或有 ±1 连字符差异，以 GitHub 口径为准。
@@ -175,6 +175,8 @@
 - [153. 前端：窄屏 flyout 的透明收回遮罩 z-index 高于面板，点任何模块项都只触发收回——C2 降面板层序时遮罩没跟着降](#153-前端窄屏-flyout-的透明收回遮罩-z-index-高于面板点任何模块项都只触发收回c2-降面板层序时遮罩没跟着降)
 - [154. 前端：命令面板数字快捷启动无查询守卫，输入 "win10"/"ipv4" 的第一个数字就跳转关面板](#154-前端命令面板数字快捷启动无查询守卫输入-win10ipv4-的第一个数字就跳转关面板)
 - [155. 前端：无 href 的 `<a class="retry-link">` 键盘永远聚焦不到——下载失败后唯一恢复动作对键盘用户不可达](#155-前端无-href-的-a-classretry-link-键盘永远聚焦不到下载失败后唯一恢复动作对键盘用户不可达)
+- [156. 运维/omp：手搓 provider 缺 reasoning 声明与 anthropic 兼容端点空签名 thinking 导致思考整块掉进 assistant_message](#156-运维omp手搓-provider-缺-reasoning-声明与-anthropic-兼容端点空签名-thinking-导致思考整块掉进-assistantmessage)
+- [157. AI 接入·omp 建档：omp 的 PI_CONFIG_DIR 按 home 相对拼接（绝对值直接 ENOENT 崩），可用的 env 通道只有 PI_CODING_AGENT_DIR；外部客户端"是否真读这份配置"要用坏服务器差分探针，不能看 exit code](#157-ai-接入omp-建档omp-的-pi_config_dir-按-home-相对拼接绝对值直接-enoent-崩可用的-env-通道只有-pi_coding_agent_dir外部客户端是否真读这份配置要用坏服务器差分探针不能看-exit-code)
 - [158. 模块移除·MCP：删授权键若不同批处理 access.json 存量遗键，fail-closed「未知键整体拒读」会连坐封死全部工具；遗键必须留合法性墓碑（读侧放行、写侧拒拨、整档回写自然剥离）](#158-模块移除mcp删授权键若不同批处理-accessjson-存量遗键fail-closed未知键整体拒读会连坐封死全部工具遗键必须留合法性墓碑读侧放行写侧拒拨整档回写自然剥离)
 
 ---
@@ -2043,25 +2045,28 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
   1. **可点元素一律真 `<button>`（或真 href 的 `<a>`）**：无 href 的 `<a>`、`<div @click>`、`<span @click>` 都不在 Tab 序里，键盘与读屏用户摸不到。要链接外观就用 button + 链接形 CSS，不要拿裸 `<a>` 当按钮。
   2. **共享层修好的契约要扫一遍方言消费面**：本例 button 重试、进度条 ARIA、stale 降灰、installed-tag 静态标签都是共享层已修、custom 方言视图系统性漏跟。修一处共享契约后 grep 全库消费面跟进，别只改共享件本身。
 
-### 158. 模块移除·MCP：删授权键若不同批处理 access.json 存量遗键，fail-closed「未知键整体拒读」会连坐封死全部工具；遗键必须留合法性墓碑（读侧放行、写侧拒拨、整档回写自然剥离）
+### 156. 运维/omp：手搓 provider 缺 reasoning 声明与 anthropic 兼容端点空签名 thinking 导致思考整块掉进 assistant_message
 
-- **问题现象与错误原因**：2026-11-23 整体移除 `ocr` 模块时，按"删键=从键集剔除"的直觉做法是同步删 `mcp/server.go` `knownModuleIDs["ocr"]` 与 `mcpwizard` 写侧 `accessToolKeys`。但读方契约是**出现未知 tools 键→整档拒读**（fail-closed，防授权语义漂移的设计本意），而存量 `access.json`（含机主实盘那份）几乎都带 `"ocr": true`——键集一删，下一轮每个 MCP 工具调用都撞"文件损坏或含契约外字段"，九个正常工具被一个死键连坐封死，且 AI 接入面板同步呈现损坏态、出路只剩「修复（覆盖重置）」全关重拨。这是"模块删除"与"只增键先例"（portscan/lan/clipboard/portkill 历批全为扩键）的首次分岔：扩键三处同批改的是产出侧，缩键还欠存量盘一个交代。
-- **排查过程**：读 `access.go load()` 的未知键判定与 `access_write_test.go` 的 round-trip 契约（"整档回写吞键=变相改权"）互证——写方任何开关都会把全键档重写回盘，于是出路不在"永久兼容死键"而在"让死键自然消亡"；再核对机主实盘 `bin/hanxidata/mcp/access.json` 确认 ocr 键真实在用（`ocr: true`），排除"恰好没人有遗键"侥幸。
-- **正确做法与标准修复方案**：三态墓碑——① 读侧 `knownModuleIDs` 保留 `"ocr": true` 并注释退役日期与理由（合法性判定放行，不挂工具）；② 写侧 `accessToolKeys` 九键正常收缩，另设 `legacyAccessKeys` 登记表进 `knownAccessTool`（strictLoadAccess 与读方对拍不裂），`SetToolAccess` 对遗键**显式拒绝**并给"已随模块移除退役"指引（拨了不产出键=静默无效，必须 fail 出声）；③ 任一在册开关的整档回写自然剥离遗键，盘面自愈。三态由 `TestLegacyAccessKeyTombstone` 钉死；`FACTS.md`「MCP 授权键数」行如实标注"10 含遗键墓碑"。
+- **问题现象与错误原因**：美国 Linux 服务器上 Paseo App 里 omp 会话的思考不折叠，英文旁白与答案挤在同一条 `assistant_message`（`paseo logs <id> --json` 里 `reasoning` 事件数为 0、原生 jsonl 只有 `assistant/text`、`usage.reasoningTokens` 为 undefined）；同版本 omp/paseo 的 Windows 却正常。两层独立成因：① 服务器 `~/.omp/agent/models.yml` 里手写的 `aliyun` provider（`api: anthropic-messages` → `token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic`）模型条目只有 `id/name/contextWindow/maxTokens`，**没有 `reasoning: true` 也没有 `compat`**，omp 因此既不当它是思考型模型、也不申请思考；② 补上 `reasoning: true` + `thinking:{mode: budget, efforts:[…]}` 后（`omp models --json aliyun` 已能回显这两项），`omp -p --no-tools` 恢复正常出 `thinking_start/delta/end`，但**请求一旦带 tools 就又退化成 `text_start/text_delta`** —— 该端点回的 thinking 块 `signature` 是空串，omp 在带工具路径上把无签名 thinking 降级成正文文本。实测 `compat` 的 `forceDemoteUnsignedThinking: false` / `dropUnsignedThinking: false` / `replayUnsignedThinking: true` 三个候选开关**全部无效**。
+- **排查过程**：先做四格对照而不是怀疑 OS/locale/relay——同一台美国机器上 provider=claude（Claude Code 直连同一 `/apps/anthropic`）有 286 个 `assistant/thinking` 块、285 条 `reasoning` 事件，证明端点会给结构化思考；同一条 trivial 问题在两台机各跑一次 omp 探针做逐字对照；用 curl 直接打端点确认"带 tools + 不带 thinking 参数"仍返回 `thinking` 块（并确认 `thinking:{type:"enabled",budget_tokens}` 会被拒：`max_completion_tokens must be greater than thinking_budget`，`adaptive` 才接受）；用 `strings` 从 omp 二进制捞 compat 键词汇表再逐个实测。关键加速：绕开 `paseo run`（每次 ~50s 且要建工作区）改用 `omp -p --mode json --no-session`，把"带工具/不带工具"变成 20 秒级对照。
+- **正确做法与标准修复方案**：把 omp 内置目录里已验证的 Qwen 声明形状照搬过去即可，不需要换端点也不需要 compat 猜测——`api: openai-completions` + `baseUrl: …/compatible-mode/v1` + `reasoning: true` + `compat: {thinkingFormat: qwen, supportsDeveloperRole: false}`（`contextWindow: 983616 / maxTokens: 131072`）。该路径带工具时思考走独立的 `reasoning_content` 字段（curl 实测 `completion_tokens_details.reasoning_tokens=25/28`），修完后 `paseo logs --json` 得到 `user_message / reasoning / assistant_message` 三事件。**另外必须真杀旧 omp 进程**：模型定义在 omp 进程启动时 materialize，`paseo stop` 只中断当前轮次不会重启进程，改动对在跑的会话无效（PID 与 lstart 不变即是证据）；`kill` 掉该 agent 的 `omp --mode rpc-ui` 进程后由 Paseo 重新拉起即恢复。
 - **避坑防重犯建议**：
-  1. **凡 fail-closed"未知即拒读整档"的授权/配置面，缩键永远比扩键多一步**：扩键是产出血包，缩键还要还存量盘的债。删键前先 grep 落盘契约的未知键判定，确认读者会不会连坐。
-  2. **墓碑要成对且写明消亡路径**：读侧合法性 + 写侧登记表两处必须同批（对拍测试兜住），并让下一次正常整写自然剥离，不留"永久兼容"的第二套键集；只留读侧放行是半吊子——写方会把遗键当未知键拒盲写或悄悄吞掉。
-  3. **静默无效比报错坏**：对已退役键的开关调用必须显式拒绝并指路，拨了没反应、盘上值还在、工具面没有——三不像状态最难排查。
+  1. **"某台机器显示不对"先做 provider 对照，别先怀疑 OS/locale/地区**：本例两台的差异全在 provider 声明（内置目录条目 vs 手写条目），`uname`、locale、relay 配置全是噪声。判据固定为 `paseo logs <id> --json` 有没有 `reasoning` 事件 + 原生 jsonl 有没有 `type:"thinking"` 与 `usage.reasoningTokens`。
+  2. **思考折叠由"请求是否申请 + 响应是否有独立通道"决定，工具存在与否会改变 omp 的处置**：验证时要按真实形态测（带工具），只测 `--no-tools` 会得出"已修好"的假结论。
+  3. **密钥绝不要用 grep/sed 抽取搬运**：本例 `grep -oE 'apiKey: *"?[^"\n]+'` 把 115 字符 key 截成 108（sha8 从 `33371ea0` 变成 `71040e18`），直接把服务器配成坏鉴权。改动含密钥的配置要用 YAML 库读改写，并做 `len + sha8` 前后双校验；比对两台是否同一把 key 也只打 len/前缀/sha8。
+  4. **配置文件别经 stdout 打印**：本例一次构建脚本误把整份 YAML 输出到终端，导致第三方中转 key 进入会话记录，需轮换。跨机搬运带密钥内容走 stdin 管道，展示一律先打码。
+  5. 长期看，手写 provider 应显式对齐 omp 内置目录条目（`omp models --json <provider>` 可查回显字段）；服务器内置目录里当时**没有** `alibaba-token-plan`，才逼出了手写 `aliyun`——目录 materialize 差异（缓存里带 `thinking_capability` 空表 / 不带）也属于要一并核对的版本证据。
 
-### 158. 模块移除·MCP：删授权键若不同批处理 access.json 存量遗键，fail-closed「未知键整体拒读」会连坐封死全部工具；遗键必须留合法性墓碑（读侧放行、写侧拒拨、整档回写自然剥离）
+### 157. AI 接入·omp 建档：omp 的 PI_CONFIG_DIR 按 home 相对拼接（绝对值直接 ENOENT 崩），可用的 env 通道只有 PI_CODING_AGENT_DIR；外部客户端"是否真读这份配置"要用坏服务器差分探针，不能看 exit code
 
-- **问题现象与错误原因**：2026-11-23 整体移除 `ocr` 模块时，按"删键=从键集剔除"的直觉做法是同步删 `mcp/server.go` `knownModuleIDs["ocr"]` 与 `mcpwizard` 写侧 `accessToolKeys`。但读方契约是**出现未知 tools 键→整档拒读**（fail-closed，防授权语义漂移的设计本意），而存量 `access.json`（含机主实盘那份）几乎都带 `"ocr": true`——键集一删，下一轮每个 MCP 工具调用都撞"文件损坏或含契约外字段"，九个正常工具被一个死键连坐封死，且 AI 接入面板同步呈现损坏态、出路只剩「修复（覆盖重置）」全关重拨。这是"模块删除"与"只增键先例"（portscan/lan/clipboard/portkill 历批全为扩键）的首次分岔：扩键三处同批改的是产出侧，缩键还欠存量盘一个交代。
-- **排查过程**：读 `access.go load()` 的未知键判定与 `access_write_test.go` 的 round-trip 契约（"整档回写吞键=变相改权"）互证——写方任何开关都会把全键档重写回盘，于是出路不在"永久兼容死键"而在"让死键自然消亡"；再核对机主实盘 `bin/hanxidata/mcp/access.json` 确认 ocr 键真实在用（`ocr: true`），排除"恰好没人有遗键"侥幸。
-- **正确做法与标准修复方案**：三态墓碑——① 读侧 `knownModuleIDs` 保留 `"ocr": true` 并注释退役日期与理由（合法性判定放行，不挂工具）；② 写侧 `accessToolKeys` 九键正常收缩，另设 `legacyAccessKeys` 登记表进 `knownAccessTool`（strictLoadAccess 与读方对拍不裂），`SetToolAccess` 对遗键**显式拒绝**并给"已随模块移除退役"指引（拨了不产出键=静默无效，必须 fail 出声）；③ 任一在册开关的整档回写自然剥离遗键，盘面自愈。三态由 `TestLegacyAccessKeyTombstone` 钉死；`FACTS.md`「MCP 授权键数」行如实标注"10 含遗键墓碑"。
+- **问题现象与错误原因**：给「设置 → AI 接入」增建第 4 家客户端 omp（Oh My Pi，`hanxi mcp` stdio 条目写进 `~/.omp/agent/mcp.json`）时，上游 mcp-config 文档一句 "PI_CONFIG_DIR changes the home config root, PI_CODING_AGENT_DIR can override the default-profile agent directory" 读起来像两条等价的 env 通道，照 claude/codex 先例给 `clientSpec` 配双通道最自然。实测（omp 18.20.3 / Windows）两者根本不对称：`PI_CONFIG_DIR` 按 **home 相对路径**拼接——塞绝对路径 `C:\...\Temp\x` 得到 `C:\Users\Administrator\C:\...\Temp\x\agent`，`mkdirSync` 直接 ENOENT 崩在启动早期（连 MCP 发现阶段都到不了）；而 `PI_CODING_AGENT_DIR` 接受绝对路径，语义就是 `<该目录>/mcp.json`。若照文档字面建双通道，向导会把条目写进 omp 永远读不到的角落，界面上照样报"已接入"——静默假成功，比拒写更坏。
+- **排查过程**：不猜，用**坏服务器差分探针**验证对面到底读了哪份文件，全程零模型调用、零网络：候选目录放一条 `{"mcpServers":{"bogusprobe":{"command":"definitely-not-a-real-exe-xyz"}}}`，跑 `omp -p --no-session --no-tools hi`，然后看 omp 日志里有没有 `{"message":"MCP tool load failed","path":"mcp:bogusprobe"}`。三轮结论：① 只设 `PI_CODING_AGENT_DIR` → 命中，坐实"目录本身 + mcp.json"；② 只设绝对值 `PI_CONFIG_DIR` → 无 MCP 行、进程 ENOENT 崩，该通道不可用；③ 两个都不设、把 `USERPROFILE`/`HOME` 指向含 `.omp/agent/mcp.json` 的假 home → 命中，钉死默认路径。两个测量陷阱：`-p` 因"无默认模型"退出码仍是 0、stdout 也完全不提 MCP，**判据只能取日志行**；日志恒落真实 `~/.omp/logs`，用 `ls -t | head -1` 抓"最新日志"会抓到本机其他 omp 会话的热日志（第一版就被骗成"没读到"），必须按 marker 字符串全量 grep 当日日志。
+- **正确做法与标准修复方案**：`internal/mcpwizard/clients.go` 的 omp 档案只建 `dirEnv: "PI_CODING_AGENT_DIR"` 一条通道，`defaultDir` 回落 `home/.omp/agent`，`PI_CONFIG_DIR` 与具名 profile（`~/.omp/profiles/<name>/agent`）一律**不建模**，理由写进该档案注释。写链复用 JSON 外科合并：omp 原生档自带的 `$schema` / `disabledServers` 顶层键由 `internal/mcpwizard/service_test.go`（`TestOmpPreservesNativeKeys`）钉住不丢，env 通道由 `TestOmpHonorsAgentDirEnv` 钉住"写指定目录、且不在默认根凭空建档"。端到端复验（不改机主配置）：临时 worktree 里构建 `hanxi.exe`，用真实向导链 `PreviewInstall`/`ConfirmInstall` 产出 `mcp.json`，再让真 omp 从该目录起——omp 侧无 `MCP tool load failed`，hanxi 侧在 exe 同级 `hanxidata/logs/app-*.log` 落下 `hanxi mcp: headless server starting`，双侧对上才叫条目被消费。
 - **避坑防重犯建议**：
-  1. **凡 fail-closed"未知即拒读整档"的授权/配置面，缩键永远比扩键多一步**：扩键是产出血包，缩键还要还存量盘的债。删键前先 grep 落盘契约的未知键判定，确认读者会不会连坐。
-  2. **墓碑要成对且写明消亡路径**：读侧合法性 + 写侧登记表两处必须同批（对拍测试兜住），并让下一次正常整写自然剥离，不留"永久兼容"的第二套键集；只留读侧放行是半吊子——写方会把遗键当未知键拒盲写或悄悄吞掉。
-  3. **静默无效比报错坏**：对已退役键的开关调用必须显式拒绝并指路，拨了没反应、盘上值还在、工具面没有——三不像状态最难排查。
+  1. **接第三方客户端的配置面，env 通道必须逐条真机验**：文档里并列的两个变量，常常一个是"目录本身"、一个是"home 相对根"、甚至根本不工作；只建实测有效的那条，其余显式不建模并留注释，比"看起来支持了"安全。
+  2. **写外部客户端配置的成功判据只能是"对面读到了"**：向导复验只证明字节落盘且可解析，证明不了路径被消费。fail-closed 报"未检测到该客户端"至少不骗人，写错目录还报"已接入"是最坏形态。
+  3. **坏服务器差分探针是零成本的消费证明**：一条注定拉不起来的 stdio 条目 + 读对方日志里的失败行，就够回答"哪个目录/哪个键真的被消费"，不需要真服务、不需要 API key、不花模型额度。
+  4. **并行会话共树下别用 `git diff > patch` 搬"自己的改动"**（同批踩到）：`git diff` 是 HEAD→工作树，会把另一代理在飞的同文件 hunk 一并带走——本次 `service.go` 的 OCR 移除被裹进探针 worktree，凭空造出"我的改动编译不过"的假象。搬移前逐文件核对 diff 内容，或在探针 worktree 里 `git checkout -- <被污染文件>` 复位后单独重放自己那几行。
 
 ### 158. 模块移除·MCP：删授权键若不同批处理 access.json 存量遗键，fail-closed「未知键整体拒读」会连坐封死全部工具；遗键必须留合法性墓碑（读侧放行、写侧拒拨、整档回写自然剥离）
 

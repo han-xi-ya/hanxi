@@ -25,6 +25,12 @@ func TestDetectClientPaths(t *testing.T) {
 		{"codex", filepath.Join(home, ".codex"), "config.toml", nil},
 		{"codex", "/ox", "config.toml", map[string]string{"CODEX_HOME": "/ox"}},
 		{"cursor", filepath.Join(home, ".cursor"), "mcp.json", nil},
+		{"omp", filepath.Join(home, ".omp", "agent"), "mcp.json", nil},
+		{"omp", "/pi/agent", "mcp.json", map[string]string{"PI_CODING_AGENT_DIR": "/pi/agent"}},
+		// PI_CONFIG_DIR 刻意不建模（实测按 home 相对拼接，绝对值直接崩）：
+		// 它换了也不改本行解析，避免猜错写进 omp 读不到的角落
+		{"omp", "/pi/agent", "mcp.json", map[string]string{"PI_CODING_AGENT_DIR": "/pi/agent", "PI_CONFIG_DIR": "/ignored"}},
+		{"omp", filepath.Join(home, ".omp", "agent"), "mcp.json", map[string]string{"PI_CONFIG_DIR": "omp-alt"}},
 	}
 	for _, c := range cases {
 		spec, ok := clientSpecByID(c.id)

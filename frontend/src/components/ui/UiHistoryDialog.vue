@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 历史记录弹窗共享壳：Teleport 遮罩 + 对话框骨架 + 交互契约一体化——
-// 两视图（OcrView/PortKillView）曾各持逐字同形副本且同带三处病灶（Esc 一键穿两层、
+// 两视图（原 OcrView/PortKillView）曾各持逐字同形副本且同带三处病灶（Esc 一键穿两层、
 // z 序被 App 单例 ConfirmDialog 倒挂、零焦点管理），修一次要追两遍；单件后契约只有一份。
 // 类名沿用 hist-*（两视图特征测试锁定的选择器，零断言成本迁移）。
 //
@@ -65,7 +65,7 @@ useDialogA11y({
 </template>
 
 <style scoped>
-/* 皮：两份壳原有微差，去重时取 Ocr 版（token 阴影/圆角，PortKill 侧观感
+/* 皮：两份壳原有微差，去重时取原 Ocr 版（该视图 2026-11-23 已随模块移除，史述；token 阴影/圆角，PortKill 侧观感
    统一为同一档，真机一并目检）；z 950 < ConfirmDialog 1000 */
 .hist-backdrop { position: fixed; inset: 0; z-index: var(--z-dialog-under); display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hist-dialog {

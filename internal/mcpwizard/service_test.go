@@ -108,8 +108,8 @@ func TestGetStatusShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Clients) != 3 {
-		t.Fatalf("应固定呈现 3 客户端，得 %d", len(st.Clients))
+	if len(st.Clients) != 4 {
+		t.Fatalf("应固定呈现 4 客户端，得 %d", len(st.Clients))
 	}
 	if !st.Server.Ready || len(st.Server.Args) != 1 || st.Server.Args[0] != "mcp" {
 		t.Errorf("server 信息异常: %+v", st.Server)
@@ -120,7 +120,7 @@ func TestGetStatusShape(t *testing.T) {
 			if c.State != stateNotInstalled || !c.CanInstall || c.CanUninstall {
 				t.Errorf("claude 初始态异常: %+v", c)
 			}
-		default: // codex/cursor 目录缺失 = 客户端无踪迹，拒装
+		default: // codex/cursor/omp 目录缺失 = 客户端无踪迹，拒装
 			if c.State != stateNotInstalled || c.CanInstall || c.CanUninstall || !strings.Contains(c.Detail, "未检测到") {
 				t.Errorf("%s 未检测到态异常: %+v", c.ID, c)
 			}
@@ -278,6 +278,69 @@ func TestClientNotDetected(t *testing.T) {
 	pv, err := svc.PreviewInstall("cursor")
 	if err != nil || pv.Allowed || !strings.Contains(pv.Reason, "未检测到") {
 		t.Errorf("预览应拒绝并说明: %+v %v", pv, err)
+	}
+}
+
+// TestOmpPreservesNativeKeys omp 原生档会自带 $schema / disabledServers / 别家条目：
+// 外科合并只动 mcpServers.hanxi，卸载后这些键必须原样在场（丢 $schema 会让 omp
+// 编辑器失去校验、丢 disabledServers 会静默重启用户亲手关掉的服务器）。
+func TestOmpPreservesNativeKeys(t *testing.T) {
+	svc, home := newTestService(t, nil)
+	target := filepath.Join(home, ".omp", "agent", "mcp.json")
+	writeFile(t, target, "{\n  \"$schema\": \"https://omp.sh/mcp-schema.json\",\n  \"mcpServers\": {\n    \"other\": { \"command\": \"x\" }\n  },\n  \"disabledServers\": [\"other\"]\n}")
+
+	cs := clientState(t, svc, "omp")
+	if cs.State != stateNotInstalled || !cs.CanInstall {
+		t.Fatalf("omp 初始态异常: %+v", cs)
+	}
+	installFlow(t, svc, "omp")
+	got := readFile(t, target)
+	for _, want := range []string{`"$schema"`, `"disabledServers"`, `"other"`, `"hanxi"`, `"mcp"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("omp 安装写入丢失 %s:\n%s", want, got)
+		}
+	}
+	if !json.Valid([]byte(got)) {
+		t.Errorf("omp 产出非法 JSON:\n%s", got)
+	}
+
+	pvu, err := svc.PreviewUninstall("omp")
+	if err != nil || !pvu.Allowed {
+		t.Fatalf("omp 卸载预览失败: %+v %v", pvu, err)
+	}
+	if _, err := svc.ConfirmUninstall("omp", pvu.Token); err != nil {
+		t.Fatalf("omp 卸载失败: %v", err)
+	}
+	back := readFile(t, target)
+	if strings.Contains(back, "hanxi") {
+		t.Errorf("omp 卸载未摘净条目:\n%s", back)
+	}
+	for _, want := range []string{`"$schema"`, `"disabledServers"`, `"other"`} {
+		if !strings.Contains(back, want) {
+			t.Errorf("omp 卸载丢失用户键 %s:\n%s", want, back)
+		}
+	}
+}
+
+// TestOmpHonorsAgentDirEnv PI_CODING_AGENT_DIR 指目录本身，优先于 home 推导——
+// 写错目录 = omp 永远读不到，故本行解析必须跟着该变量走。
+func TestOmpHonorsAgentDirEnv(t *testing.T) {
+	root := t.TempDir()
+	agentDir := filepath.Join(root, "pi", "agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc, home := newTestService(t, map[string]string{"PI_CODING_AGENT_DIR": agentDir})
+	cs := clientState(t, svc, "omp")
+	if cs.ConfigPath != filepath.Join(agentDir, "mcp.json") {
+		t.Fatalf("omp 目标路径未跟随 PI_CODING_AGENT_DIR: %+v", cs)
+	}
+	installFlow(t, svc, "omp")
+	if !strings.Contains(readFile(t, filepath.Join(agentDir, "mcp.json")), "hanxi") {
+		t.Error("条目未写进 PI_CODING_AGENT_DIR 指定目录")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".omp", "agent", "mcp.json")); !os.IsNotExist(err) {
+		t.Errorf("不应同时在默认根凭空建档: %v", err)
 	}
 }
 

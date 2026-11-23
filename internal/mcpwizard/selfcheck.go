@@ -40,7 +40,7 @@ const (
 	checkStateFailed = "failed"
 )
 
-// 缓存与超时口径：TTL 覆盖一次向导会话（三客户端连开预览只 spawn 一次）；
+// 缓存与超时口径：TTL 覆盖一次向导会话（四客户端连开预览只 spawn 一次）；
 // 超时是整场握手（spawn + initialize + tools/list）的硬预算——hanxi mcp 冷启动
 // 要过 settings/windows.New/registry 构造链，正常 1~3s，给 15s 富余。
 const (

@@ -12,7 +12,8 @@ const (
 )
 
 // clientSpec 已知客户端建档：路径解析规则照 PLAN_MCP §2.5 表格——
-// Claude Code 支持 CLAUDE_CONFIG_DIR、Codex 支持 CODEX_HOME，Cursor 无环境变量通道。
+// Claude Code 支持 CLAUDE_CONFIG_DIR、Codex 支持 CODEX_HOME、omp 支持 PI_CODING_AGENT_DIR，
+// Cursor 无环境变量通道。
 type clientSpec struct {
 	ID     string
 	Name   string
@@ -46,6 +47,22 @@ var clientSpecs = []clientSpec{
 		dirEnv: "",
 		defaultDir: func(home string) string {
 			return filepath.Join(home, ".cursor")
+		},
+		fileName: "mcp.json",
+	},
+	{
+		// omp（Oh My Pi）用户级原生 MCP 档：<配置根>/agent/mcp.json，形态与 Cursor 同款
+		// （顶层 mcpServers 映射，stdio 可省 type）——路径与形态均在 omp 18.20.3 真机实测。
+		// 只建 PI_CODING_AGENT_DIR 一条通道（指目录本身，绝对路径实测有效）；
+		// PI_CONFIG_DIR 刻意不建模：实测它按 home 相对拼接（塞绝对路径直接 ENOENT 崩），
+		// 且换的是 omp 全局配置根而非 MCP 专属目录，具名 profile 又自行派生目录
+		// ——三者都不是"改一个变量换一处 mcp.json"的静态映射，猜错只会写进读不到的角落。
+		// 那种环境下本行回落默认路径：目录在则可写（由用户自行核对路径），
+		// 不在则 fail-closed 呈现"未检测到"，手动片段兜底。
+		ID: "omp", Name: "omp", Format: fmtJSON,
+		dirEnv: "PI_CODING_AGENT_DIR",
+		defaultDir: func(home string) string {
+			return filepath.Join(home, ".omp", "agent")
 		},
 		fileName: "mcp.json",
 	},

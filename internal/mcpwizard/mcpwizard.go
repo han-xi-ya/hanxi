@@ -1,5 +1,5 @@
 // Package mcpwizard 是「AI 接入」设置分区（MCP，F4b）的 GUI 配置编辑半边：
-// 探测 Claude Code / Codex / Cursor 三家客户端配置文件，按
+// 探测 Claude Code / Codex / Cursor / omp 四家客户端配置文件，按
 // 「预览 → 确认 → 备份 → 原子写 → 复验 → 失败回滚」红线流程，写入/摘除
 // hanxi MCP stdio server 启动条目（command = 当前 hanxi exe，args = ["mcp"]）。
 //
