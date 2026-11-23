@@ -5,7 +5,6 @@
 /**
  * HistoryService 统一历史记录的 Wails 绑定壳：薄转发 Store 的读删清三操作。
  * Save 刻意不暴露——历史记录由后端业务动作自动产生，前端无写入面。
- * 另挂 Q1 裁定的"OCR 全文入库"档位读写（持久化在 config.json，经 settings.Store）。
  * 注册方式对齐 notify：公共包型服务直挂 services 列表，无模块身份、无 Nav、无路由。
  * @module
  */
@@ -37,14 +36,6 @@ export function Delete(id) {
 }
 
 /**
- * GetOcrFullText 返回"OCR 识别全文入历史"开关（Q1：默认开=全文入库）。
- * @returns {$CancellablePromise<boolean>}
- */
-export function GetOcrFullText() {
-    return $Call.ByID(1330735249);
-}
-
-/**
  * List 返回指定桶记录（新→旧）；keyword 非空时四字段大小写不敏感过滤。
  * @param {string} funcType
  * @param {string} keyword
@@ -52,13 +43,4 @@ export function GetOcrFullText() {
  */
 export function List(funcType, keyword) {
     return $Call.ByID(3949581027, funcType, keyword);
-}
-
-/**
- * SetOcrFullText 设定"OCR 识别全文入历史"开关并落盘（对下一次识别起效）。
- * @param {boolean} v
- * @returns {$CancellablePromise<void>}
- */
-export function SetOcrFullText(v) {
-    return $Call.ByID(1446538381, v);
 }

@@ -21,7 +21,7 @@
 ```
 main.ts ── createApp(App) + 四份 styles/ 全局样式（tokens/fonts/base/components）  # 无 router、无 store
 App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，展示层已组件化）
-  ├─ constants/navigation.ts 单一来源：ROUTES（54 模块路由 + 核心页 +
+  ├─ constants/navigation.ts 单一来源：ROUTES（53 模块路由 + 核心页 +
   │    设置八分区，defineAsyncComponent 全异步）+ CORE_ROUTES 豁免清单
   │    （含 /modules，模块中心自身不受"模块停用弹回"拦截）
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
@@ -37,8 +37,9 @@ App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，�
   └─ 主题 token 住 styles/tokens.css（浅/深双主题 × 色板覆写块），
      字族栈与字体档位（N36/N40）住 styles/fonts.css      # 不再内联于 App.vue
 
-views/*.vue                    # 52 个后端模块各一视图 + 模块中心/日志/关于/占位
-                               # + 三个弹窗壳（QuickMenu/MsgBoard/SnipCard），
+views/*.vue                    # 53 个后端模块各一视图 + 模块中心/日志/关于/占位
+                               # + 两个弹窗壳（QuickMenu/MsgBoard；原 SnipCard 壳
+                               # 2026-11-23 随 OCR 模块移除退场），
                                # 最大 HomeView 976 行；settings/ 为设置页八分区
                                # （General/Theme/Tray/Storage/System/Workbench/Snapshot/AI）
 components/ui/                 # 无业务原子件（+ PageContainer 三档容器 token，§7.3）
@@ -299,14 +300,17 @@ src/
 3. **回执单一话术**：复制一律 `copyWithToast(text, okTip)`——成功播 `okTip`
    （缺省「已复制」），失败统一「复制失败」（走 showErrorToast 长保活）；
    视图不得再自写"剪贴板不可用 / execCommand 不可用"等实现细节文案。
-   已登记有意例外：Everything 单元格点击即复制（表格交互范式）、
-   SnipCardView 走 Go 代理写剪贴板（绕 webview 安全上下文）——均不强行改。
+   已登记有意例外：Everything 单元格点击即复制（表格交互范式）——不强行改
+   （原第二例 SnipCardView 走 Go 代理写剪贴板，2026-11-23 随 OCR 模块移除退场）。
 4. **不做全局剪贴板监听**：一切读取只在用户显式动作（点钮 / Ctrl+V / 全局热键）
-   时发生一次；轮询仅允许出现在单次有始有终的操作内（如 snip.WaitFor 等截屏写回）。
+   时发生一次；轮询仅允许出现在单次有始有终的操作内（如等待外部写回落定；
+   原 OCR snip.WaitFor 截屏写回例证 2026-11-23 随该模块移除退场）。
 5. **全局热键走集中封装**：新功能要热键，复用 `internal/hotkey.Registry`
    （命名槽位 + 先注册新键后注销旧键 + 冲突中文报错降级），派发目标一律
    TrayCommand 键（`registry.RunTrayCommand`），不各自触碰 Wails、更不写键盘钩子。
-   首例：`Ctrl+Alt+T` 剪贴板识图（`ocr/snip-clipboard`，键位可在文字识别页改）。
+   首例曾是 `Ctrl+Alt+T` 剪贴板识图（`ocr/snip-clipboard`，2026-11-23 随 OCR
+   模块整体移除退场）；现行在用：留言板 `Ctrl+Alt+B`、速记卡 `Ctrl+Alt+N`、
+   剪贴板浮层 `Ctrl+Alt+V`（键位冻结不可改）与顺序粘贴队列 `Ctrl+Alt+X`。
 
 ## 12. 模块状态投影消费与契约门禁（Wave 0–5S 落地事实）
 
@@ -332,7 +336,7 @@ src/
 - **四摘要卡**：正在运行 / 模块总数 / 已启用 / **可用更新**（前三为 ListModules 真实计数；可用更新 = 投影 `health==='update-available'` 条目数，由后端 `internal/updatewatch` 真实上游对比驱动，非占位）。
 - **可用更新条目行**：`useModuleCatalog` 过滤 update-available 合并列表（有则显示、无则整区隐藏），行=模块名+摘要合并短语（直取 `SUMMARY_META`，零本地推断）+健康徽标+直达；徽标短语经 `status.ts` 的 `updateAvailableText(state.remoteVersion)` 渲染——投影带 `remoteVersion`（后端更新感知链写入的纯展示字段）时"有可用更新 → 新版本号"，未带时按词表原文呈现**不编造**；页头「检查更新」→ `RefreshUpdates` 手动一轮。
 - **常用入口**：固定常用（`components/shell/navGrouping.ts` 的 `FAV_MODULE_IDS` 单一来源）+ 最近使用（`loadRecentRoutes`）合并去重、按可见 navs 过滤，最多 4 个直达。
-- **最近任务双源**：`HistoryService.List` 三桶（ocr/portkill/envcheck）+ 统一 Operation 终态记录（`useOperations.recentFinished`）两源按时间降序取最近 5 条；在途（queued/running）不进本列表（归模块中心在途条）；无数据整区隐藏。
+- **最近任务双源**：`HistoryService.List` 单桶（portkill；原 ocr 桶写入方随 2026-11-23 OCR 模块移除退场，envcheck/npmtool 桶系超前表述从未落地）+ 统一 Operation 终态记录（`useOperations.recentFinished`）两源按时间降序取最近 5 条；在途（queued/running）不进本列表（归模块中心在途条）；无数据整区隐藏。
 
 ### 12.4 状态词表与 Go↔TS 契约门禁
 

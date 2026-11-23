@@ -328,18 +328,6 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
-		ID:            "ocr",
-		Name:          "文字识别",
-		Description:   "本地 OCR 服务托管与图片文字识别：探测/一键启停 hanxi-ocr，拖图即识别（离线免费，需自备服务组件）",
-		Category:      "efficiency",
-		DeliveryKind:  extapi.DeliveryBuiltinLogical,
-		Capabilities:  []string{"dedicated-window", "hotkey-slot", "managed-process", "mcp-tools", "tray-commands"},
-		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch, extapi.EntryTray, extapi.EntryHotkey, extapi.EntryMCP, extapi.EntryWindow},
-		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
-		Permissions:   []extapi.Permission{},
-		Owner:         "hanxi",
-	},
-	{
 		ID:            "papertodo",
 		Name:          "PaperTodo",
 		Description:   "托管桌面便签 PaperTodo：双变体版本管理与 JobObject 启停，唤窗/收拢/退出走官方命令信使",
@@ -558,7 +546,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "terminal",
 		Name:          "内嵌终端",
-		Description:   "在 hanxi 里开真终端：Windows 伪控制台（ConPTY）直连，命令行/PowerShell/Claude Code 三档入口；输出流走 Wails GoStream 二进制通道直达 xterm 渲染（非画面转译），断线不杀进程、刷新即重连；会话与 hanxi 同生命周期，退出全清不留孤儿",
+		Description:   "在 hanxi 里开真终端：Windows 伪控制台（ConPTY）直连，命令行/PowerShell/Claude Code/Oh My Pi 四档入口；输出流走 Wails GoStream 二进制通道直达 xterm 渲染（非画面转译），断线不杀进程、刷新即重连；会话与 hanxi 同生命周期，退出全清不留孤儿",
 		Category:      "developer",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{},

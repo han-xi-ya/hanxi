@@ -91,7 +91,6 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/dbx': { component: defineAsyncComponent(() => import('@/views/DbxView.vue')), moduleId: 'dbx' },
   '/ext/sysinfo': { component: defineAsyncComponent(() => import('@/views/SysInfoView.vue')), moduleId: 'sysinfo' },
   '/ext/rammap': { component: defineAsyncComponent(() => import('@/views/RAMMapView.vue')), moduleId: 'rammap' },
-  '/ext/ocr': { component: defineAsyncComponent(() => import('@/views/OcrView.vue')), moduleId: 'ocr' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/softver': { component: defineAsyncComponent(() => import('@/views/SoftverView.vue')), moduleId: 'softver' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
@@ -226,7 +225,6 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   airsnip: 'desktop',
   papertodo: 'efficiency',
   wechat: 'efficiency',
-  ocr: 'efficiency',
   recordly: 'media',
   piclite: 'media',
   bili23: 'media',
@@ -321,7 +319,6 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   msgboard: { icon: 'i:message-circle', route: '/ext/msgboard' },
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
   softver: { icon: 'i:tag', route: '/ext/softver' },
-  ocr: { icon: 'i:scan-text', route: '/ext/ocr' },
 }
 
 export const FALLBACK_MODULE_ICON = 'i:box'

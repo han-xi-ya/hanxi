@@ -41,7 +41,7 @@ const dirs = computed(() => [
   },
   {
     name: '运行时临时目录', badge: '动态 TOML & PID', path: appInfo.value?.runtimeDir,
-    intent: '运行期瞬态件（frpc 动态配置/PID、OCR 图片暂存等），可安全删除，需要时自动重建',
+    intent: '运行期瞬态件（frpc 动态配置/PID 等），可安全删除，需要时自动重建',
   },
 ])
 
@@ -49,8 +49,8 @@ const dirs = computed(() => [
 // logs=脱敏滚动日志；state=history/各模块状态 JSON 与模块台账（paths.go
 // StateDir，updatewatch/bcu/everything 等 NewStore(StateDir)）；versions=托管
 // 版本仓（<模块>_<版本> 目录，DataRootSubUsage 聚合源）；runtime=动态 TOML/PID
-// 与 OCR 暂存（frpc runDir、ocr tmpDir）；installers=安装包装件归档移存
-// （ocr hosted.go archiveInstaller、rustdesk manager）；modules=receipts 安装
+// （frpc runDir；OCR 图片暂存随 2026-11-23 模块移除退场）；installers=安装包装件
+// 归档移存（rustdesk manager；ocr hosted.go 同款已随模块移除）；modules=receipts 安装
 // 凭据 + journals 操作日志（app.go OpenStore/ReceiptStore）；memo=便签文件库
 // （memo service NewFileStore(<data根>/memo)）；.snapshots=自动快照库
 // （internal/snapshot snapshotsDirName）；mcp=接入凭据与授权档位（mcpwizard）。
@@ -58,7 +58,7 @@ const DIR_INTENTS: Record<string, string> = {
   logs: '脱敏运行日志，按保留天数滚动清理',
   state: '模块运行状态与历史（识别历史、模块台账等 JSON），删了配置与记录会丢',
   versions: '托管工具的可执行程序与按版本隔离的私有数据',
-  runtime: '运行期瞬态件（动态配置、PID、图片暂存），可安全删除',
+  runtime: '运行期瞬态件（动态配置、PID），可安全删除',
   installers: '安装包装件归档（zip/安装包原件），供重装与追溯参考',
   modules: '模块安装凭据（receipts）与操作日志（journals）',
   memo: '随手记文件库：全部笔记数据都在这里',

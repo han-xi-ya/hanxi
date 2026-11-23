@@ -96,7 +96,7 @@ func (s *MemoService) stop() error {
 
 // ---------- 配置读写（RPC 导出版见 quicksheet.go 尾部） ----------
 
-// setQuickHotkey 改键事务（ocr SetSnipHotkey 同款"先系统后持久化"补偿序）：
+// setQuickHotkey 改键事务（msgboard 改键事务同款"先系统后持久化"补偿序）：
 //  1. 形态校验（store 内），无效直接报错，系统与配置都不动；
 //  2. 落系统（注册器先注册新键成功才注销旧键；停用为幂等解绑），失败上抛——
 //     配置保持旧值，旧绑定原样活着；

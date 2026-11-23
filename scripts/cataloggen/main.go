@@ -107,15 +107,15 @@ var deliveryConst = map[extapi.DeliveryKind]string{
 // ---------------------------------------------------------------------------
 
 // hotkeyAllowlist 全局热键入口/能力白名单。
-// 证据：internal/app/hotkeys.go 由装配根为 ocr 绑定剪贴板识图热键（槽位
-// ocr/snip-clipboard）；internal/modules/msgboard/hotkey.go 为 msgboard 模块
+// 证据：internal/modules/msgboard/hotkey.go 为 msgboard 模块
 // 自绑显隐热键（槽位 msgboard/toggle，随 OnInit/OnDestroy 驱动）；
 // internal/modules/memo/hotkey.go 为 memo 模块自绑悬浮速记卡显隐热键
 // （槽位 memo/quicksheet，N16 B 批，随 OnInit/OnDestroy 驱动）；
 // internal/modules/clipboard/hotkey.go 为 clipboard 模块自绑浮层唤出热键
 // （槽位 clipboard/overlay，N45，默认 Ctrl+Alt+V，随 OnInit/OnDestroy 驱动）。
+// （ocr 剪贴板识图热键曾由装配根 internal/app/hotkeys.go 接线，随 2026-11-23
+// OCR 模块整体移除退场，该证据文件一并删除。）
 var hotkeyAllowlist = map[string]bool{
-	"ocr":       true,
 	"msgboard":  true,
 	"memo":      true,
 	"clipboard": true,
@@ -124,16 +124,16 @@ var hotkeyAllowlist = map[string]bool{
 // mcpAllowlist catalog 的 mcp-tools 能力/EntryMCP 入口在册白名单（在册判据以本表
 // 与冻结基线 fixture 为准，扩表须同改 fixture 与 catalog.go，非改注释可覆盖）。
 // 证据：internal/mcp/mcp.go —— mcpModules() 挂载 envcheck、everything；
-// Run 额外注册 ocr（ocrModule := ocr.New 并注入识图后端）；memo 为特例通道
+// memo 为特例通道
 // （构造带迁移写盘副作用不进 registry，registryGate 直读 config.json enabled 位）；
 // clipboard 与 memo 同谱（NewStore 构造即建目录/空库回写，无头表禁令契约
 // §12 v1.2.4，registryGate 特例 + tools_clipboard.go 零落盘直读 hanxi_clipboard_search）。
+// （ocr 曾以 Run 追加注册持有 hanxi_ocr_recognize，随 2026-11-23 模块移除退场。）
 // 已知分歧（勿把本表当工具面全貌）：sysinfo/portscan/lan/portkill 同样持有无头
 // 工具但未入本表——登记在案见 docs/reviews/2026-10-26-backend-code-review.md 遗留项 9。
 var mcpAllowlist = map[string]bool{
 	"envcheck":   true,
 	"everything": true,
-	"ocr":        true,
 	"memo":       true,
 	"clipboard":  true,
 }

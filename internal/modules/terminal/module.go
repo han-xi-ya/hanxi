@@ -33,14 +33,14 @@ func (m *Module) SetMainWindow(win *application.WebviewWindow) {
 // SetGate 实现 extapi.GateAware。
 func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
-// Info 返回模块元数据。Description 只写竖切里真实存在的能力：三档入口、
+// Info 返回模块元数据。Description 只写真实存在的能力：四档入口、
 // 断线重连、杀会话；"多窗同屏观流""重启续会话"等未实现的话一句不提。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "内嵌终端",
 		Version:     "0.1.0",
-		Description: "在 hanxi 里开真终端：Windows 伪控制台（ConPTY）直连，命令行/PowerShell/Claude Code 三档入口；输出流走 Wails GoStream 二进制通道直达 xterm 渲染（非画面转译），断线不杀进程、刷新即重连；会话与 hanxi 同生命周期，退出全清不留孤儿",
+		Description: "在 hanxi 里开真终端：Windows 伪控制台（ConPTY）直连，命令行/PowerShell/Claude Code/Oh My Pi 四档入口；输出流走 Wails GoStream 二进制通道直达 xterm 渲染（非画面转译），断线不杀进程、刷新即重连；会话与 hanxi 同生命周期，退出全清不留孤儿",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

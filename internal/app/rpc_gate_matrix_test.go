@@ -28,8 +28,6 @@ var gateExemptMethods = map[string]string{
 	"SetMemoHook":       "装配注入 fileshare→memo 联动钩子，直调时序先于 gate",
 	"SetMainWindow":     "装配注入主窗引用（quickmenu 唤窗），直调时序先于 gate",
 	"SetHotkeyRegistry": "装配交接热键注册表（msgboard），直调时序先于 gate",
-	// G-A/G-C 收敛新增（Wave 3）：
-	"SetSnipHotkeyBinding": "装配注入 snip 热键落实通道（ocr，app/hotkeys.go），直调时序先于 gate",
 }
 
 func TestRPCGateCoverage(t *testing.T) {

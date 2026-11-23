@@ -42,12 +42,7 @@ const appSvc = vi.hoisted(() => ({
   SetAccent: vi.fn().mockResolvedValue(undefined),
   SetWindowDarkMode: vi.fn().mockResolvedValue(undefined),
 }))
-const histSvc = vi.hoisted(() => ({
-  GetOcrFullText: vi.fn(),
-  SetOcrFullText: vi.fn(),
-}))
 vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }))
-vi.mock('../../../../bindings/hanxi/internal/history/historyservice', () => histSvc)
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()), Emit: vi.fn() } }))
 
 // mode 为数据根来源内部标记（sibling/bound），非运行模式
@@ -73,8 +68,6 @@ function stubs() {
   appSvc.OpenPath.mockResolvedValue(undefined)
   appSvc.GetTheme.mockResolvedValue('light')
   appSvc.GetAccent.mockResolvedValue('teal')
-  histSvc.GetOcrFullText.mockResolvedValue(true)
-  histSvc.SetOcrFullText.mockResolvedValue(undefined)
 }
 
 async function mountView(Component: typeof GeneralSection | typeof ThemeSection | typeof TraySection | typeof StorageSection | typeof SystemSection | typeof WorkbenchSection) {
@@ -122,16 +115,6 @@ describe('常规偏好分区', () => {
     await flushPromises()
     expect(useToast().toastMsg.value).toContain('注册表写入失败')
     expect(appSvc.GetGeneralSettings.mock.calls.length).toBeGreaterThan(callsBefore)
-  })
-
-  it('历史·OCR 全文档位（Q1）：默认回填开，切换走 SetOcrFullText', async () => {
-    stubs()
-    const w = await mountView(GeneralSection)
-    const switches = w.findAll('.switch')
-    expect((switches[2].element as HTMLInputElement).checked).toBe(true) // historyOcrFull
-    await switches[2].setValue(false)
-    await flushPromises()
-    expect(histSvc.SetOcrFullText).toHaveBeenCalledWith(false)
   })
 })
 

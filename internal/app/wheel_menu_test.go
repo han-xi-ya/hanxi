@@ -105,7 +105,7 @@ func TestSetWheelMenuPersistsWithoutTrayRebuild(t *testing.T) {
 func TestWheelHotChannelIsLiveStoreRead(t *testing.T) {
 	env := newWheelTestEnv(t)
 	if err := env.svc.SetWheelMenu([]settings.TrayMenuItem{
-		{Type: settings.TrayItemRoute, Ref: "/ext/ocr", Label: "改后轮盘", Enabled: true},
+		{Type: settings.TrayItemRoute, Ref: "/ext/memo", Label: "改后轮盘", Enabled: true},
 	}); err != nil {
 		t.Fatal(err)
 	}

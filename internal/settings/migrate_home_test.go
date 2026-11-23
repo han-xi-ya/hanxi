@@ -97,7 +97,7 @@ func TestMigrateFromLegacyHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustWrite(t, filepath.Join(oldHome, "config.json"), `{"theme":"dark"}`)
-	mustWrite(t, filepath.Join(oldHome, "state", "ocr.json"), `{"a":1}`)
+	mustWrite(t, filepath.Join(oldHome, "state", "msgboard.json"), `{"a":1}`)
 	mustWrite(t, filepath.Join(oldHome, "versions", "everything", "1.0", "es.exe"), "binary-ish")
 
 	if err := migrateFromLegacyHome(oldHome, newHome); err != nil {
@@ -105,7 +105,7 @@ func TestMigrateFromLegacyHome(t *testing.T) {
 	}
 	for _, rel := range []string{
 		"config.json",
-		filepath.Join("state", "ocr.json"),
+		filepath.Join("state", "msgboard.json"),
 		filepath.Join("versions", "everything", "1.0", "es.exe"),
 	} {
 		if _, err := os.Stat(filepath.Join(newHome, rel)); err != nil {

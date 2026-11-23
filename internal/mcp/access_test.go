@@ -21,9 +21,11 @@ func writeAccess(t *testing.T, content string) *Access {
 // TestAccessFailClosedMatrix 穷举 PLAN_MCP §6 的 fail-closed 判定口径：
 // 除"合法且显式 true"外，一切形态（缺失/损坏/类型错/版本错/未知字段/超限/尾随）都必须全拒绝。
 func TestAccessFailClosedMatrix(t *testing.T) {
-	// 十键全集（AI 接入批：portscan/lan 扫描族两键默认关——未授权连"触发扫描"
+	// 合法键全集（AI 接入批：portscan/lan 扫描族两键默认关——未授权连"触发扫描"
 	// 都不可能发生；端口查杀批：portkill 键入册但仍默认关，且 destructive.json
-	// 总闸另判——access 侧放行只是 A1 门之一；剪贴板批 clipboard 键入册；未知键仍整体拒读）
+	// 总闸另判——access 侧放行只是 A1 门之一；剪贴板批 clipboard 键入册；未知键仍
+	// 整体拒读）。"ocr" 为 2026-11-23 模块移除后的遗键墓碑（knownModuleIDs 注释）：
+	// 存量文件带它必须继续采信，否则 fail-closed 连坐封死全部工具。
 	allModules := []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey, clipboardAccessKey}
 
 	cases := []struct {

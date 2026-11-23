@@ -4,7 +4,7 @@ package clipboard
 // 策略（排除表自定义/按应用保留天数）、粘贴后即删、队列键位、预览遮蔽规则，
 // 独立落 <StateDir>/clipboard-prefs.json。
 //
-// 载体裁决（memo-prefs/ocr 同谱）：绝不掺进 index.json 数据本体——配置混进
+// 载体裁决（memo-prefs 同谱）：绝不掺进 index.json 数据本体——配置混进
 // 账本会污染 ClearAll 的"不留残片"收口；也不进 config.json（数据根特征签名，
 // ARCHITECTURE.md 钉死）。**构造只读不落盘**：缺文件/坏文件一律回落默认，
 // 只有用户显式 SetPrefs 才产生第一份文件（NewStore 构造落盘副作用的镜像纪律：

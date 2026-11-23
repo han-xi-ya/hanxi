@@ -28,9 +28,9 @@ func mustSave(t *testing.T, s *Store, r Record) {
 func TestTrimNewestFirst(t *testing.T) {
 	s := newTestStore(t)
 	for i := 0; i < maxPerBucket+1; i++ { // 201 条触发裁剪
-		mustSave(t, s, Record{FuncType: "ocr", Summary: fmt.Sprintf("第%d条", i)})
+		mustSave(t, s, Record{FuncType: "demo", Summary: fmt.Sprintf("第%d条", i)})
 	}
-	list, err := s.List("ocr", "")
+	list, err := s.List("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,9 +46,9 @@ func TestTrimNewestFirst(t *testing.T) {
 	// 恰满 200 不裁：再存 199 条边界（从 200 倒推验证）
 	s2 := newTestStore(t)
 	for i := 0; i < maxPerBucket; i++ {
-		mustSave(t, s2, Record{FuncType: "ocr", Summary: fmt.Sprintf("x%d", i)})
+		mustSave(t, s2, Record{FuncType: "demo", Summary: fmt.Sprintf("x%d", i)})
 	}
-	if got, _ := s2.List("ocr", ""); len(got) != maxPerBucket {
+	if got, _ := s2.List("demo", ""); len(got) != maxPerBucket {
 		t.Fatalf("恰 200 条不应裁剪: %d", len(got))
 	}
 }
@@ -58,8 +58,8 @@ func TestTrimNewestFirst(t *testing.T) {
 func TestTruncateLongFields(t *testing.T) {
 	s := newTestStore(t)
 	long := strings.Repeat("鉴", maxFieldRunes+100) // 中文 rune 计，非字节
-	mustSave(t, s, Record{FuncType: "ocr", Input: long, Output: long})
-	list, err := s.List("ocr", "")
+	mustSave(t, s, Record{FuncType: "demo", Input: long, Output: long})
+	list, err := s.List("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +76,8 @@ func TestTruncateLongFields(t *testing.T) {
 	// 恰好 4000 不截
 	s2 := newTestStore(t)
 	exact := strings.Repeat("a", maxFieldRunes)
-	mustSave(t, s2, Record{FuncType: "ocr", Input: exact})
-	got, _ := s2.List("ocr", "")
+	mustSave(t, s2, Record{FuncType: "demo", Input: exact})
+	got, _ := s2.List("demo", "")
 	if got[0].Input != exact {
 		t.Fatal("恰达上限不应追加截断标记")
 	}
@@ -88,13 +88,13 @@ func TestTruncateLongFields(t *testing.T) {
 func TestRedactAtSaveEntry(t *testing.T) {
 	s := newTestStore(t)
 	mustSave(t, s, Record{
-		FuncType: "ocr",
-		Summary:  `识别含 password=hunter22 的截图`,
+		FuncType: "demo",
+		Summary:  `回显含 password=hunter22 的结果`,
 		Input:    `C:\a\token=abcdefgh12345.png`,
 		Output:   "正文含 Bearer abcdefgh12345-XYZ 的请求头",
 		Extra:    `auth: "s3cretvalue"`,
 	})
-	list, err := s.List("ocr", "")
+	list, err := s.List("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,8 +122,8 @@ func TestRedactAtSaveEntry(t *testing.T) {
 func TestSummaryFallbackFromInput(t *testing.T) {
 	s := newTestStore(t)
 	longInput := strings.Repeat("图", 60) + ".png"
-	mustSave(t, s, Record{FuncType: "ocr", Input: longInput})
-	list, _ := s.List("ocr", "")
+	mustSave(t, s, Record{FuncType: "demo", Input: longInput})
+	list, _ := s.List("demo", "")
 	if list[0].Summary != headRunes(longInput, summaryFromInputRunes) {
 		t.Fatalf("Summary 应回落 Input 前 %d 字: %q", summaryFromInputRunes, list[0].Summary)
 	}
@@ -134,7 +134,7 @@ func TestSummaryFallbackFromInput(t *testing.T) {
 func TestCorruptFileStickyNoWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
-	garbage := `{"ocr": [这不是合法`
+	garbage := `{"demo": [这不是合法`
 	if err := os.WriteFile(path, []byte(garbage), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -143,16 +143,16 @@ func TestCorruptFileStickyNoWrite(t *testing.T) {
 		t.Fatal("损坏文件应置 loadErr")
 	}
 	// 写全禁：Save / Delete / Clear 均返回错误
-	if err := s.Save(Record{FuncType: "ocr", Input: "x"}); err == nil {
+	if err := s.Save(Record{FuncType: "demo", Input: "x"}); err == nil {
 		t.Fatal("损坏驻留期应禁 Save")
 	}
 	if err := s.Delete(1); err == nil {
 		t.Fatal("损坏驻留期应禁 Delete")
 	}
-	if err := s.Clear("ocr"); err == nil {
+	if err := s.Clear("demo"); err == nil {
 		t.Fatal("损坏驻留期应禁 Clear")
 	}
-	if _, err := s.List("ocr", ""); err == nil {
+	if _, err := s.List("demo", ""); err == nil {
 		t.Fatal("损坏驻留期 List 应报错供面板提示")
 	}
 	// 绝不空库覆写：磁盘字节原样保留
@@ -174,12 +174,12 @@ func TestCorruptFileStickyNoWrite(t *testing.T) {
 
 func TestClearOnlyCurrentBucket(t *testing.T) {
 	s := newTestStore(t)
-	mustSave(t, s, Record{FuncType: "ocr", Input: "a"})
+	mustSave(t, s, Record{FuncType: "demo", Input: "a"})
 	mustSave(t, s, Record{FuncType: "portkill", Input: "8080"})
-	if err := s.Clear("ocr"); err != nil {
+	if err := s.Clear("demo"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.List("ocr", ""); len(got) != 0 {
+	if got, _ := s.List("demo", ""); len(got) != 0 {
 		t.Fatal("当前桶应清空")
 	}
 	if got, _ := s.List("portkill", ""); len(got) != 1 {
@@ -193,14 +193,14 @@ func TestClearOnlyCurrentBucket(t *testing.T) {
 
 func TestDeleteByID(t *testing.T) {
 	s := newTestStore(t)
-	mustSave(t, s, Record{FuncType: "ocr", Input: "keep"})
-	mustSave(t, s, Record{FuncType: "ocr", Input: "drop"})
-	list, _ := s.List("ocr", "")
+	mustSave(t, s, Record{FuncType: "demo", Input: "keep"})
+	mustSave(t, s, Record{FuncType: "demo", Input: "drop"})
+	list, _ := s.List("demo", "")
 	dropID := list[0].ID // 头插，最新在前
 	if err := s.Delete(dropID); err != nil {
 		t.Fatal(err)
 	}
-	list, _ = s.List("ocr", "")
+	list, _ = s.List("demo", "")
 	if len(list) != 1 || list[0].Input != "keep" {
 		t.Fatalf("删除失真: %+v", list)
 	}
@@ -231,9 +231,9 @@ func TestListKeywordCaseInsensitive(t *testing.T) {
 func TestIDMonotonicAndPersisted(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	mustSave(t, s, Record{FuncType: "ocr", Input: "a"})
-	mustSave(t, s, Record{FuncType: "ocr", Input: "b"})
-	list, _ := s.List("ocr", "")
+	mustSave(t, s, Record{FuncType: "demo", Input: "a"})
+	mustSave(t, s, Record{FuncType: "demo", Input: "b"})
+	list, _ := s.List("demo", "")
 	first, second := list[1].ID, list[0].ID
 	if second <= first {
 		t.Fatalf("ID 应严格递增: %d → %d", first, second)
@@ -247,13 +247,13 @@ func TestIDMonotonicAndPersisted(t *testing.T) {
 	if err := json.Unmarshal(raw, &dump); err != nil {
 		t.Fatalf("落盘格式非 map[funcType][]Record: %v", err)
 	}
-	if len(dump["ocr"]) != 2 {
+	if len(dump["demo"]) != 2 {
 		t.Fatalf("落盘条数失真: %+v", dump)
 	}
 	// 重开实例：新 ID 续接存量最大值之上（重启续接）
 	s2 := NewStore(dir)
-	mustSave(t, s2, Record{FuncType: "ocr", Input: "c"})
-	list2, _ := s2.List("ocr", "")
+	mustSave(t, s2, Record{FuncType: "demo", Input: "c"})
+	list2, _ := s2.List("demo", "")
 	if len(list2) != 3 || list2[0].ID <= second {
 		t.Fatalf("重启续接失真: %+v", list2)
 	}
@@ -274,13 +274,13 @@ func TestConcurrentSave(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if err := s.Save(Record{FuncType: "ocr", Input: fmt.Sprintf("c-%d", i)}); err != nil {
+			if err := s.Save(Record{FuncType: "demo", Input: fmt.Sprintf("c-%d", i)}); err != nil {
 				t.Errorf("并发 Save 失败: %v", err)
 			}
 		}(i)
 	}
 	wg.Wait()
-	list, err := s.List("ocr", "")
+	list, err := s.List("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}

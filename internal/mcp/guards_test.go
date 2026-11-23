@@ -84,7 +84,6 @@ func TestToolNamesStable(t *testing.T) {
 	want := map[string]string{
 		"hanxi_envcheck_detect":  "envcheck",
 		"hanxi_file_search":      "everything",
-		"hanxi_ocr_recognize":    "ocr",
 		"hanxi_memo_search":      "memo",
 		"hanxi_memo_stats":       "memo",
 		"hanxi_sysinfo_report":   "sysinfo",

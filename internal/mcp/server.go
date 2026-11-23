@@ -31,10 +31,12 @@ const maxPayloadBytes = 1 << 20
 // 刻意不进「设置 → AI 接入」面板（破坏性键不给误操作台阶，机主手动双文件开启），
 // 且工具生效还需 destructive.json 机主总闸 + 一次性令牌二段确认（四道闸全说见
 // guarded.go 文件头）；白名单/knownModuleIDs/写侧 accessToolKeys 三处同批扩键。
+// OCR 模块整体移除批（2026-11-23 机主裁决"拆了"）摘除 hanxi_ocr_recognize，
+// 面板与写侧键集十枚缩为九枚；knownModuleIDs 保留 "ocr" 遗键作合法性墓碑
+// （存量 access.json 带 ocr 键不得触发整体拒读，写方整档回写时自然剥离）。
 const (
 	toolEnvCheck  = "hanxi_envcheck_detect"
 	toolSearch    = "hanxi_file_search"
-	toolOCR       = "hanxi_ocr_recognize"
 	toolMemo      = "hanxi_memo_search"
 	toolMemoStats = "hanxi_memo_stats"
 	toolSysInfo   = "hanxi_sysinfo_report"
@@ -53,7 +55,6 @@ type Deps struct {
 	Gate     ModuleGate   // 模块启用门禁（真 = registry+settings 组合）
 	EnvCheck EnvChecker   // hanxi_envcheck_detect 后端
 	Search   Searcher     // hanxi_file_search 后端（严格只读档）
-	OCR      Recognizer   // hanxi_ocr_recognize 后端
 	Memo     MemoSource   // 便签族后端（零落盘直读，memo_search 与 memo_stats 共用）
 	SysInfo  ReportSource // hanxi_sysinfo_report 后端（N32，与 GUI 同一 service）
 	Logs     LogTailer    // hanxi_log_read 后端（N34，只读 tail 按天日志）
@@ -70,12 +71,12 @@ func NewMCPServer(deps Deps) *server.MCPServer {
 	s := server.NewMCPServer(
 		"hanxi",
 		product.Version,
-		server.WithInstructions("hanxi 工具箱的 MCP 接入：查询类严格只读（环境体检/文件搜索/便签/系统档案/运行日志/OCR）；"+
+		server.WithInstructions("hanxi 工具箱的 MCP 接入：查询类严格只读（环境体检/文件搜索/便签/系统档案/运行日志）；"+
 			"扫描类（端口扫描/局域网扫描）仅对网络做可达性探测，不修改本机或任何设备状态，但属于主动出网动作且结果含网络信息；"+
 			"破坏性工具族（端口查杀 prepare/execute）双授权默认关、二段确认方生效——access.json 的 portkill 键与"+
 			" mcp/destructive.json 机主总闸齐开才放行，prepare 只发放一次性令牌（120 秒），execute 复核进程指纹后才结束进程，"+
 			"系统关键进程与 hanxi 自身永久拒杀。"+
-			"所有工具调用前需授权（access.json，十键，默认全关；portkill 键刻意不进「设置 → AI 接入」面板，机主手动两文件开启）。"+
+			"所有工具调用前需授权（access.json，九键，默认全关；portkill 键刻意不进「设置 → AI 接入」面板，机主手动两文件开启）。"+
 			"未授权/被停用的工具调用会返回指引错误，不会执行。"),
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -109,6 +110,10 @@ type toolDef struct {
 var knownModuleIDs = map[string]bool{
 	"envcheck":         true,
 	"everything":       true,
+	// "ocr" 为退役遗键（2026-11-23 OCR 模块整体移除）：不再挂任何工具/开关，
+	// 仅在合法性判定中保留——存量 access.json 多数带着 ocr 键，按"未知键整体
+	// 拒读"的 fail-closed 口径会连坐封死全部工具；保留此键视同合法，写方
+	// （mcpwizard）下一次整档回写自然将其剥离（与写方 legacyAccessKeys 两处成对）。
 	"ocr":              true,
 	"memo":             true,
 	"sysinfo":          true,
@@ -133,7 +138,6 @@ var knownModuleIDs = map[string]bool{
 var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
-	{Name: toolOCR, ModuleID: "ocr", Build: buildOcrTool},
 	{Name: toolMemo, ModuleID: "memo", Build: buildMemoTool},
 	{Name: toolMemoStats, ModuleID: "memo", Build: buildMemoStatsTool},
 	{Name: toolSysInfo, ModuleID: "sysinfo", Build: buildSysInfoTool},

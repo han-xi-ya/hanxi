@@ -523,7 +523,7 @@ func copyDirIfAny(srcDir, dstDir string) error {
 }
 
 // writeJSON 写版本账本 meta.json：收口 jsonstore 原子写（tmp+Sync+rename），
-// 与 ocr 托管线同纪律——截断的 meta 会让版本目录落"读不出可信账目"的死角。
+// 与 snipaste 托管线同纪律——截断的 meta 会让版本目录落"读不出可信账目"的死角。
 // 盘上格式不变（2 空格缩进、无尾换行、0644）。
 func writeJSON(path string, v any) error {
 	return jsonstore.Save(path, v)

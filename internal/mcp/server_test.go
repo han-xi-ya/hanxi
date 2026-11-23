@@ -81,7 +81,7 @@ func newTestServer(t *testing.T) (Deps, *Access, *fakeEnvChecker) {
 		Access: access,
 		// 门禁默认全开，授权层单独测；portkill 在册=破坏族已过模块启用门（A1 之 A2
 		// 侧另由 destructive.json 把关，与本表无关）。
-		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey, clipboardAccessKey),
+		Gate:     newFakeGate("envcheck", "everything", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey, clipboardAccessKey),
 		EnvCheck: env,
 	}
 	return deps, access, env
@@ -273,13 +273,12 @@ func TestUnauthorizedFailClosed(t *testing.T) {
 func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	deps, _, env := newTestServer(t)
 	fs := &fakeSearcher{}
-	fr := &fakeRecognizer{}
 	fm := &fakeMemo{}
 	fi := &fakeReportSource{}
 	fl := &fakeLogTailer{}
 	fp := &fakePortProber{}
 	fl2 := &fakeLanProber{}
-	deps.Search, deps.OCR, deps.Memo, deps.SysInfo, deps.Logs = fs, fr, fm, fi, fl
+	deps.Search, deps.Memo, deps.SysInfo, deps.Logs = fs, fm, fi, fl
 	deps.PortScan, deps.Lan = fp, fl2
 	SetPortkillWiring(nil) // 显式未接线态：若有任何路径溜进 handler，审计会留下 unwired 物证
 	h := installAuditCapture(t)
@@ -291,7 +290,6 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	}{
 		{toolEnvCheck, nil},
 		{toolSearch, map[string]any{"query": "x"}},
-		{toolOCR, map[string]any{"path": `C:\a.png`}},
 		{toolMemo, nil},
 		{toolMemoStats, nil},
 		{toolSysInfo, nil},
@@ -316,7 +314,7 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	}
 	// 扫描族被拒时后端（含 CountTargets 预检）必须零触发——"默认不放开触发扫描"
 	// 的回归锚：未授权连"解析目标规模"都不发生，更不碰网络。
-	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 ||
+	if env.calls != 0 || fs.lastQ != "" || len(fm.items) != 0 ||
 		fi.calls != 0 || fl.calls != 0 || fp.calls != 0 || fl2.countCalls != 0 || fl2.scanCalls != 0 {
 		t.Errorf("denied tools must not touch backends")
 	}

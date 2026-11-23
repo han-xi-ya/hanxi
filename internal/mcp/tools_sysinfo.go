@@ -11,8 +11,7 @@ import (
 )
 
 // tools_sysinfo.go 是 N32 系统信息只读工具（hanxi_sysinfo_report）：GUI「系统
-// 信息」模块同一 service 直供，零新采集逻辑。档位化（学 ocr 全文档先例）：
-// 整份 report 体量偏大（八段全量 + 每卷/每接口逐项），默认 overview 摘要档，
+// 信息」模块同一 service 直供，零新采集逻辑。档位化：整份 report 体量偏大（八段全量 + 每卷/每接口逐项），默认 overview 摘要档，
 // 需要 MAC/BIOS/卷标级细节时显式要 full。
 //
 // 敏感面口径（N32 ③ 如实评估）：report 含计算机名/产品 ID/IP/MAC/盘符与卷标，

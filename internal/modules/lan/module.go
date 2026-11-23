@@ -30,7 +30,7 @@ func New(plat platform.Platform, store *settings.Store) extapi.Module {
 }
 
 // Service 返回模块的扫描服务实例（与 GUI 绑定同一 service 契约，供无头 MCP
-// 后端取用；口径同 ocr/sysinfo 的 Service() 先例）。
+// 后端取用；口径同 sysinfo 的 Service() 先例）。
 func (e *Module) Service() *LanService { return e.svc }
 
 // SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，

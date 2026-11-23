@@ -18,7 +18,7 @@ import (
 // 指针字段区分"未设置"与显式空串）。热键留空 = 用户主动停用，加载时必须保留。
 
 // defaultQuickHotkey 出厂速记热键：Ctrl+Alt+N（N = Note）。与既有热键
-// （ocr/snip Ctrl+Alt+T、msgboard/toggle Ctrl+Alt+B）互不冲突。
+// （msgboard/toggle Ctrl+Alt+B）互不冲突。
 const defaultQuickHotkey = "Ctrl+Alt+N"
 
 // quickMemoStore 悬浮速记卡偏好持久化。nil 接收者全部按默认值语义工作

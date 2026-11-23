@@ -3,7 +3,6 @@ import App from './App.vue'
 // 浮窗视图刻意静态 import（60+ 工作台视图走懒加载，唯独这里不吃拆包）：全局热键唤出对
 // 首帧延迟敏感，改懒加载等于给唤出路径加一次网络/解析等待——勿改，除非实测唤出延迟可接受。
 import QuickMenuPopup from './views/QuickMenuPopup.vue'
-import SnipCardView from './views/SnipCardView.vue'
 import MsgBoardPopup from './views/MsgBoardPopup.vue'
 import QuickMemoSheet from './views/QuickMemoSheet.vue'
 import ClipboardOverlay from './views/ClipboardOverlay.vue'
@@ -24,16 +23,14 @@ initTheme()
 installClipboardBridge()
 
 // 独立 frameless 顶层窗口按 hash 分流（同一前端产物多窗复用，不加载工作台外壳）：
-//   #quickmenu → 右键长按轮盘；#ocrcard → 框选截屏识别悬浮结果卡；
+//   #quickmenu → 右键长按轮盘；
 //   #msgboard → 全屏留言牌（透明全屏窗，牌体由视图自绘）；
 //   #memosheet → 悬浮速记卡（全局热键唤出，卡体由视图自绘）；
 //   #clipboardoverlay → 剪贴板浮层（Ctrl+Alt+V 唤出，列表由视图自绘）。
 const hash = window.location.hash
 const rootComponent = hash.startsWith('#quickmenu')
   ? QuickMenuPopup
-  : hash.startsWith('#ocrcard')
-    ? SnipCardView
-    : hash.startsWith('#msgboard')
+  : hash.startsWith('#msgboard')
       ? MsgBoardPopup
       : hash.startsWith('#memosheet')
         ? QuickMemoSheet

@@ -75,7 +75,7 @@ export const Kind = {
  */
 
 /**
- * QueueHotkeyState 队列热键实况回显（ocr SnipHotkeyState 同谱：Registered 读
+ * QueueHotkeyState 队列热键实况回显（msgboard 热键回显同谱：Registered 读
  * Registry 实况供设置面显示"在位/冲突降级"，Accel ""=停用）。
  * @typedef {Object} QueueHotkeyState
  * @property {string} accel

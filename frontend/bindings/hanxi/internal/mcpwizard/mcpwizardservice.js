@@ -48,7 +48,7 @@ export function GetAccessOverview() {
 }
 
 /**
- * GetStatus 探测三客户端状态 + access.json 呈现，供分区页首屏。
+ * GetStatus 探测四客户端状态 + access.json 呈现，供分区页首屏。
  * @returns {$CancellablePromise<$models.WizardStatus>}
  */
 export function GetStatus() {

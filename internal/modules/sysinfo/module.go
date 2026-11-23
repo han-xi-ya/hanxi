@@ -24,7 +24,7 @@ func New() extapi.Module {
 	return &Module{svc: NewSysInfoService(extapi.NewLeaseHolder(ID))}
 }
 
-// Service 供无头通道（hanxi mcp N32）与 GUI 共用同一 service 契约实例（ocr 先例）。
+// Service 供无头通道（hanxi mcp N32）与 GUI 共用同一 service 契约实例。
 func (m *Module) Service() *SysInfoService { return m.svc }
 
 // Info 模块元信息。

@@ -122,7 +122,6 @@ type AppSettings struct {
 	QuickMenuHoldMs    int                 `json:"quickMenuHoldMs"`
 	QuickMenuMovePx    int                 `json:"quickMenuMovePx"`
 	QuickMenuSkin      QuickMenuSkinConfig `json:"quickMenuSkin"`      // 轮盘皮肤账（纯视觉偏好；缺键=出厂素瓷实底盘，解码进 DefaultSettings 副本自动回落）
-	HistoryOcrFullText bool                `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
 	Wechat             WechatConfig        `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
 	WechatAccounts     []WechatAccount     `json:"wechatAccounts"`     // 微信多账号列表
 	WebAppEntries      []WebAppEntry       `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
@@ -143,8 +142,7 @@ func DefaultSettings() AppSettings {
 		LanRemarks:         make(map[string]string),
 		TrayMenu:           make([]TrayMenuItem, 0),
 		WheelMenu:          make([]TrayMenuItem, 0), // 轮盘独立账出厂为空；真实派生只发生在 load 迁移块（见 WheelMenu 字段注释）
-		QuickMenuTwoTier:   true,                    // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
-		HistoryOcrFullText: true,                    // OCR 全文入历史默认开启（同 QuickMenuTwoTier 缺字段回落机制）
+		QuickMenuTwoTier:   true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
 		// 轮盘皮肤出厂 = frost 素瓷实底盘（与前端 DEFAULT_WHEEL_SKIN 同值）：旧配置
 		// 缺 quickMenuSkin 键即整体落此默认；半缺子字段（如只有 preset）也逐字段回落。
 		QuickMenuSkin: QuickMenuSkinConfig{Preset: "frost", FaceAlpha: 100, Stroke: 55, FollowModuleColor: false},

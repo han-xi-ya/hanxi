@@ -20,7 +20,7 @@ func legacyWheelConfig(t *testing.T, dir string) string {
 	legacy := map[string]any{
 		"theme": "dark",
 		"trayMenu": []TrayMenuItem{
-			{Type: TrayItemRoute, Ref: "/ext/ocr", Enabled: true, Label: "截图"},
+			{Type: TrayItemRoute, Ref: "/ext/memo", Enabled: true, Label: "便签"},
 			{Type: TrayItemGroup, Label: "工具", Enabled: true, Children: []TrayMenuItem{
 				{Type: TrayItemExe, Path: `C:\Tools\x.exe`, Enabled: true},
 			}},
@@ -105,7 +105,7 @@ func TestWheelMenuExistingKeyNeverOverwritten(t *testing.T) {
 		dir := t.TempDir()
 		cfgFile := filepath.Join(dir, "config.json")
 		raw := `{"trayMenu":[{"type":"route","ref":"/settings","enabled":true}],` +
-			`"wheelMenu":[{"type":"route","ref":"/ext/ocr","label":"轮盘专用","enabled":true}]}`
+			`"wheelMenu":[{"type":"route","ref":"/ext/memo","label":"轮盘专用","enabled":true}]}`
 		if err := os.WriteFile(cfgFile, []byte(raw), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ func TestWheelMenuExistingKeyNeverOverwritten(t *testing.T) {
 			t.Fatalf("NewStore: %v", err)
 		}
 		w := store.GetWheelMenu()
-		if len(w) != 1 || w[0].Ref != "/ext/ocr" || w[0].Label != "轮盘专用" {
+		if len(w) != 1 || w[0].Ref != "/ext/memo" || w[0].Label != "轮盘专用" {
 			t.Errorf("已有 wheelMenu 键被覆盖：%+v", w)
 		}
 	})

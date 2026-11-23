@@ -9,7 +9,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 
-// 主题跨窗广播：轮盘/挂牌/OCR 结果卡等浮窗是独立 webview，首帧经
+// 主题跨窗广播：轮盘/挂牌/速记卡等浮窗是独立 webview，首帧经
 // initTheme 各读各的缓存/后端，但**存活的浮窗**对主窗之后的切换无感（旧深色
 // 残留即此病根）。走 Wails 事件总线——前端 Events.Emit 经内建通道进 Go
 // EventManager 再广播到全部窗口（含发起窗自收，v3 messageprocessor

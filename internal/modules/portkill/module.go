@@ -55,7 +55,7 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
-// Service 暴露服务实例供装配根接线统一历史（SetHistory，照 ocr.Module.Service 先例）。
+// Service 暴露服务实例供装配根接线统一历史（SetHistory，照 sysinfo.Module.Service 先例）。
 func (e *Module) Service() *PortKillService { return e.svc }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见接口文档；

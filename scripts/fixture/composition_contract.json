@@ -126,11 +126,6 @@
       "group": "desktop"
     },
     {
-      "id": "ocr",
-      "route": "/ext/ocr",
-      "group": "efficiency"
-    },
-    {
       "id": "papertodo",
       "route": "/ext/papertodo",
       "group": "efficiency"
@@ -325,9 +320,6 @@
     "nanazip:operation-progress",
     "nanazip:package-snapshot",
     "notify:received",
-    "ocr:file-drop-result",
-    "ocr:service-state",
-    "ocr:snip-result",
     "operation:changed",
     "papertodo:instance-state",
     "papertodo:version-download",
@@ -400,10 +392,6 @@
       {
         "before": "cMod.SetHotkeyRegistry(hk)",
         "after": "registry.EnsureActive(\"clipboard\")"
-      },
-      {
-        "before": "setupSnipHotkey(hk, registry, ocrSvc)",
-        "after": "registry.EnsureActive(\"quickmenu\")"
       }
     ]
   },
@@ -423,21 +411,6 @@
       "ListOperations",
       "DismissResumable",
       "RefreshUpdates"
-    ],
-    "modules/ocr/ocrservice.js": [
-      "GetEngines",
-      "GetSnipHotkey",
-      "GetSnipOverlay",
-      "GetSnipResult",
-      "HandleNativeDrop",
-      "RecognizeClipboardImage",
-      "SetActiveEngine",
-      "SetSnipHotkey",
-      "SetSnipHotkeyEnabled",
-      "SetSnipOverlay",
-      "SnipAndRecognize",
-      "SnipCardDismiss",
-      "SnipCopyText"
     ],
     "modules/quickmenu/quickmenuservice.js": [
       "Dismiss",
@@ -474,7 +447,7 @@
     ]
   },
   "counts": {
-    "modules": 54,
-    "events": 102
+    "modules": 53,
+    "events": 99
   }
 }

@@ -107,7 +107,7 @@ func TestProbeStdioHealthy(t *testing.T) {
 		case "1":
 			_, _ = io.WriteString(serverOutW, initOKFrame("hanxi")+"\n")
 		case "2":
-			_, _ = io.WriteString(serverOutW, toolsOKFrame("hanxi_envcheck_detect", "hanxi_file_search", "hanxi_ocr_recognize", "hanxi_memo_search")+"\n")
+			_, _ = io.WriteString(serverOutW, toolsOKFrame("hanxi_envcheck_detect", "hanxi_file_search", "hanxi_sysinfo_report", "hanxi_memo_search")+"\n")
 			_ = clientInW.Close() // 答完即收线：假服务端见 stdin EOF 关 stdout
 		}
 	})

@@ -81,11 +81,6 @@ const accessTools = computed(() => {
       risk: { text: '会暴露文件位置', chip: 'chip-warning' },
     },
     {
-      key: 'ocr', name: '图片文字识别', tool: 'hanxi_ocr_recognize', on: !!t?.ocr,
-      desc: '你交给 AI 的图片在本机识别成文字——图片不上网，返回的是文字。',
-      risk: { text: '只回文字', chip: 'chip-neutral' },
-    },
-    {
       key: 'memo', name: '便签检索与统计', tool: 'hanxi_memo_search · hanxi_memo_stats', on: !!t?.memo,
       desc: 'AI 可搜索你便签里的文字内容，还能看到条数、标签、时间跨度等统计（统计不含正文）——最私密的一项，建议保持关闭。',
       risk: { text: '含个人笔记 · 建议关', chip: 'chip-danger' },

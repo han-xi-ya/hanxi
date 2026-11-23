@@ -12,8 +12,8 @@ import (
 // 全局浮层热键与生命周期收口（契约 §6；接线形态完全复用 memo 速记卡/msgboard
 // 先例）：本模块只持有键位与回调，系统绑定收口全仓唯一 hotkey.Registry
 // （先注册新键、成功才注销旧键；冲突保持旧绑定并中文报错；实况以系统为准）。
-// 绑定随本模块 OnInit/OnDestroy 驱动，不进 internal/app/hotkeys.go（那里是 ocr
-// 命令派发链的另一种接线形态）；浮层槽位名与托盘命令键两头一个名字
+// 绑定随本模块 OnInit/OnDestroy 驱动，不在装配根接线（装配根形态是命令派发链
+// 专用，已随 OCR 模块移除退场）；浮层槽位名与托盘命令键两头一个名字
 // （托盘键 = 模块 ID + "/" + TrayCommand.ID，clipboard/overlay 正点对位）。
 
 const (

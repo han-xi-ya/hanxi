@@ -154,7 +154,7 @@ func extractRegisteredModuleConstructors(t *testing.T, source string) []string {
 	// 被装配根持有引用的模块以变量入表，不以 package.New(...) 直接出现
 	//（memo/clipboard 构造可失败走条件 append，其余直取变量，数量随行就市）。
 	// terminal 自 v0.x 起需要主窗回填（SetMainWindow），同入变量名单。
-	constructors = append(constructors, "ocr", "portkill", "fileshare", "quickmenu", "msgboard", "terminal")
+	constructors = append(constructors, "portkill", "fileshare", "quickmenu", "msgboard", "terminal")
 	if strings.Contains(source, "modulesToRegister = append(modulesToRegister, memoModule)") {
 		constructors = append(constructors, "memo")
 	}

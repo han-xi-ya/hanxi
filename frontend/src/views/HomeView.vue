@@ -11,7 +11,7 @@
 //                投影刷新由 updates:checked 驱动 useModuleCatalog 节流重拉，本页不重复拉；
 //   · 常用入口   固定常用（navGrouping.FAV_MODULE_IDS 单一来源）+ 最近使用（loadRecentRoutes），
 //                经后端 navs 实时过滤可见性（模块停用即消失），最多 4 个直达；
-//   · 最近任务   HistoryService.List 两桶（ocr/portkill）+ 统一 Operation
+//   · 最近任务   HistoryService.List 单桶（portkill）+ 统一 Operation
 //                recentFinished 两源合并、按时间降序取最近 5 条，无数据整区隐藏。
 import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
@@ -181,10 +181,10 @@ async function checkUpdates() {
 }
 
 // ── 最近任务：历史服务分桶 RPC（后端 Save 的 FuncType 与模块注册 ID 对齐，
-// 当前写入方为识别 ocr / 查杀 portkill 两桶）。
+// 当前写入方为查杀 portkill 单桶）。
 // TODO：后端统一 Operation 投影（docs/plans/PLAN_OFFICIAL_MODULE_DISTRIBUTION.md）落地后
 // 改接统一真相源，新增历史桶需同步本清单（RPC 无跨桶列取方法，只能逐桶合并）。
-const HISTORY_BUCKETS = ['ocr', 'portkill']
+const HISTORY_BUCKETS = ['portkill']
 const RECENT_TASKS_MAX = 5
 
 async function loadRecentTasks() {

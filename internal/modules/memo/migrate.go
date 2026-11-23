@@ -12,7 +12,7 @@ import (
 )
 
 // memo 库迁移：state/memo.json 整库 → memo/<id>.md 每条一文件（PLAN_SNAPSHOT §3.4）。
-// 判据幂等（仓内无 schema 版本号先例，走 ocr 双写文化同款"判据幂等"）：
+// 判据幂等（仓内无 schema 版本号先例，走全仓"判据幂等"文化）：
 //
 //	需要迁移 ⇔ 旧库 memo.json 存在 && memo/ 下没有已提交的分条文件
 //

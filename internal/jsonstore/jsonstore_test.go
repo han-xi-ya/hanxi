@@ -87,7 +87,7 @@ func TestSaveFailureKeepsOriginal(t *testing.T) {
 	}
 }
 
-// TestValidateListenPort 与 ddnsgo/ocr 原两份逐字拷贝同语义：1024~65535。
+// TestValidateListenPort 与 ddnsgo/ocr（后者 2026-11-23 已移除，史述）原两份逐字拷贝同语义：1024~65535。
 func TestValidateListenPort(t *testing.T) {
 	for _, p := range []int{1024, 53120, 65535} {
 		if err := ValidateListenPort(p); err != nil {

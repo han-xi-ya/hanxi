@@ -840,10 +840,10 @@ onMounted(() => {
 .tool-path { min-width: 0; }
 .path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 2px; }
 .path-link:hover { text-decoration-color: var(--color-primary); color: var(--color-primary); }
-/* 行内复制钮：卡面静默、悬停/聚焦浮现（与 OcrView 逐行复制同交互族） */
+/* 行内复制钮：卡面静默、悬停/聚焦浮现（原 OcrView 逐行复制同交互族，2026-11-23 随模块移除史述） */
 .meta-copy { opacity: 0; flex-shrink: 0; transition: opacity var(--motion-base) ease; }
 .tool-card:hover .meta-copy, .tool-card:focus-within .meta-copy { opacity: 1; }
-/* 触屏无 hover：复制钮恒显，可发现性不依赖指针悬停（OcrView P2-14 同款漏网面） */
+/* 触屏无 hover：复制钮恒显，可发现性不依赖指针悬停（原 OcrView P2-14 同款漏网面） */
 @media (pointer: coarse) { .meta-copy { opacity: 1; } }
 .tool-hint { font-size: var(--text-sm); border-radius: var(--radius-chip); padding: 6px 8px; line-height: 1.5; }
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }

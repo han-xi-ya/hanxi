@@ -35,7 +35,7 @@ type QueueChangedPayload struct {
 	IDs []string `json:"ids"`
 }
 
-// QueueHotkeyState 队列热键实况回显（ocr SnipHotkeyState 同谱：Registered 读
+// QueueHotkeyState 队列热键实况回显（msgboard 热键回显同谱：Registered 读
 // Registry 实况供设置面显示"在位/冲突降级"，Accel ""=停用）。
 type QueueHotkeyState struct {
 	Accel      string `json:"accel"`
@@ -274,7 +274,7 @@ func (s *ClipboardService) queueStep() error {
 	}
 }
 
-// ---------- 队列热键对（ocr snip 键位对同谱：校验即绑定、败不落盘） ----------
+// ---------- 队列热键对（msgboard 键位对同谱：校验即绑定、败不落盘） ----------
 
 // validateQueueHotkey 形态校验纯函数：去空白；非空必含修饰键（"+" 分隔），
 // 空串=显式停用。真实可用性以 Registry 注册结果为准（冲突拒绝不落盘）。

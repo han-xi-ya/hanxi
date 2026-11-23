@@ -76,7 +76,6 @@ import (
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/msgboard"
 	"hanxi/internal/modules/nanazip"
-	"hanxi/internal/modules/ocr"
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
@@ -273,9 +272,6 @@ func RegisterEvents() {
 	application.RegisterEvent[wsl.DownloadProgress]("wsl:msi-download")
 	application.RegisterEvent[wsl.CloneProgress]("wsl:clone")
 	application.RegisterEvent[wsl.CompactProgress]("wsl:compact")
-	application.RegisterEvent[ocr.ServiceState]("ocr:service-state")
-	application.RegisterEvent[ocr.DropResult]("ocr:file-drop-result")
-	application.RegisterEvent[ocr.SnipResult]("ocr:snip-result")
 	application.RegisterEvent[softver.ScanProgress]("softver:dir-scan")
 	application.RegisterEvent[softver.InstallerProgress]("softver:installer-download")
 
@@ -490,7 +486,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
 	quickMenuModule := quickmenu.New(store, registry)
 	fileShareModule := fileshare.New(plat)
-	ocrModule := ocr.New(plat)                  // 类型断言取服务实例，接主窗文件拖放（组件导入）
 	portkillModule := portkill.New(plat)        // 类型断言取服务实例，注入统一历史
 	terminalModule := terminal.New()            // 持有引用：主窗随装配根回填（目录选择对话框模态挂载）
 	msgboardModule := msgboard.New(plat, paths) // 持有引用：热键注册器随装配根注入（R1 收编）
@@ -549,7 +544,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		rammap.New(plat),
 		douzy.New(plat),
 		piik.New(plat),
-		ocrModule,
 		lan.New(plat, store),
 		portkillModule,
 		portscan.New(),
@@ -591,13 +585,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		slog.Warn("逻辑安装凭据迁移未完成，部分模块可能呈现未安装（可在模块中心安装找回）", "err", err)
 	}
 
-	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入首批两处接缝
-	//（ocr 识别 / portkill 查询与查杀）。记录点与口径见各模块接入提交。
+	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入接缝
+	//（portkill 查询与查杀）。记录点与口径见各模块接入提交。
 	historyStore := history.NewStore(paths.StateDir())
-	historySvc := history.NewHistoryService(historyStore, store)
-	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
-		ocrMod.Service().SetHistory(historyStore, func() bool { return store.Get().HistoryOcrFullText })
-	}
+	historySvc := history.NewHistoryService(historyStore)
 	if pkMod, ok := portkillModule.(*portkill.Module); ok && pkMod != nil {
 		pkMod.Service().SetHistory(historyStore)
 	}
@@ -730,26 +721,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 退出经 cleanup 的 Stop 收口未触发的延迟 goroutine。
 	updateWatcher.Start()
 
-	// 全仓唯一一张热键注册表（底层即 Wails GlobalShortcut 管理器）：ocr 剪贴板
-	// 识图、留言板 toggle 等所有热键槽位共用同一份记账与原子换键语义（F2-③）。
+	// 全仓唯一一张热键注册表（底层即 Wails GlobalShortcut 管理器）：留言板 toggle
+	// 等所有热键槽位共用同一份记账与原子换键语义（F2-③）。
 	hk := hotkey.NewRegistry(a.GlobalShortcut)
-
-	// 文字识别：主窗文件拖放 → OcrService（exe 落放=导入组件，图片落放=选图识别）。
-	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
-		ocrSvc := ocrMod.Service()
-		win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
-			details := e.Context().DropTargetDetails()
-			if details == nil {
-				return
-			}
-			switch details.ElementID {
-			case "ocr-import-target", "ocr-image-dropzone":
-				ocrSvc.HandleNativeDrop(e.Context().DroppedFiles())
-			}
-		})
-		// 全局热键"剪贴板识图"（默认 Ctrl+Alt+T）：通用注册器 + 命令派发接线。
-		setupSnipHotkey(hk, registry, ocrSvc)
-	}
 
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
 	//（右键长按识别与 wechat 入站监听同属常驻监听型能力；设置页关模块即可停用）。

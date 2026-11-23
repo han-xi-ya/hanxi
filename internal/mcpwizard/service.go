@@ -95,7 +95,6 @@ type ClientState struct {
 type AccessTools struct {
 	Envcheck   bool `json:"envcheck"`
 	Everything bool `json:"everything"`
-	Ocr        bool `json:"ocr"`
 	Memo       bool `json:"memo"`
 	Sysinfo    bool `json:"sysinfo"`
 	Logs       bool `json:"logs"`
@@ -517,7 +516,6 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 		info.Tools = AccessTools{
 			Envcheck:   st.tools["envcheck"],
 			Everything: st.tools["everything"],
-			Ocr:        st.tools["ocr"],
 			Memo:       st.tools["memo"],
 			Sysinfo:    st.tools["sysinfo"],
 			Logs:       st.tools["logs"],

@@ -4,14 +4,13 @@
 // goroutine 上，不会阻塞消息泵）。
 //
 // 设计边界（克制）：
-//   - 槽位化：每个功能一个 name（如 "ocr/snip-clipboard"），改键 = 先注册新键、
+//   - 槽位化：每个功能一个 name（如 "msgboard/toggle"），改键 = 先注册新键、
 //     成功后才注销旧键——注册失败保持旧绑定原样（冲突降级，绝不 panic/静默丢键）；
 //   - 不吞错误：OS 拒绝（典型为组合键已被其他程序抢占）转中文可读 error 上抛，
 //     由设置页红字呈现；
 //   - 不做监听/轮询/队列：一次性触发即回调，语义与 RegisterHotKey 对齐。
 //     留言板、速记卡、剪贴板浮层等热键功能直接复用本注册表（全仓唯一实例，
-//     装配根构造后交接，见 internal/app/hotkeys.go；ocr 剪贴板识图经装配
-//     包装复用同一注册表），不再各自触碰 Wails。
+//     装配根构造后交接，见 app.go 的 hotkey.NewRegistry 接线），不再各自触碰 Wails。
 package hotkey
 
 import (

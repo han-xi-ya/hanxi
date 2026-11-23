@@ -108,8 +108,8 @@ func TestMigrateRootStateFiles(t *testing.T) {
 	t.Run("目标冲突：状态文件跳过保留双方，残骸同名则删根侧", func(t *testing.T) {
 		base := t.TempDir()
 		state := filepath.Join(base, "state")
-		touch(t, filepath.Join(state, "ocr.json"), `{"new":true}`) // state 侧已有（回滚期写回场景）
-		touch(t, filepath.Join(base, "ocr.json"), `{"old":true}`)  // 根侧同名冲突
+		touch(t, filepath.Join(state, "msgboard.json"), `{"new":true}`) // state 侧已有（回滚期写回场景）
+		touch(t, filepath.Join(base, "msgboard.json"), `{"old":true}`)  // 根侧同名冲突
 		touch(t, filepath.Join(state, "keyviz.json.tmp.1"), "x")   // 残骸冲突：state 已有
 		touch(t, filepath.Join(base, "keyviz.json.tmp.1"), "y")    // 根侧尸块
 
@@ -120,16 +120,16 @@ func TestMigrateRootStateFiles(t *testing.T) {
 		if len(moved) != 0 {
 			t.Errorf("冲突项不应被迁移: %v", moved)
 		}
-		if len(skipped) != 1 || skipped[0] != "ocr.json" {
-			t.Errorf("ocr.json 应记为跳过: %v", skipped)
+		if len(skipped) != 1 || skipped[0] != "msgboard.json" {
+			t.Errorf("msgboard.json 应记为跳过: %v", skipped)
 		}
-		if !exists(filepath.Join(base, "ocr.json")) || !exists(filepath.Join(state, "ocr.json")) {
+		if !exists(filepath.Join(base, "msgboard.json")) || !exists(filepath.Join(state, "msgboard.json")) {
 			t.Error("冲突状态文件应双方保留，不许静默覆盖")
 		}
 		if exists(filepath.Join(base, "keyviz.json.tmp.1")) {
 			t.Error("同名残骸应删除根侧")
 		}
-		b, _ := os.ReadFile(filepath.Join(state, "ocr.json"))
+		b, _ := os.ReadFile(filepath.Join(state, "msgboard.json"))
 		if string(b) != `{"new":true}` {
 			t.Error("state 侧既有文件内容不得被触碰")
 		}

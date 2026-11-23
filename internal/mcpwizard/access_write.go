@@ -18,7 +18,10 @@ package mcpwizard
 //
 // 落盘契约（PLAN_MCP §6 拍板文本 + 扩充批注记，"恰好"二字的执行）：
 //
-//	{"version":1,"tools":{"envcheck":bool,"everything":bool,"ocr":bool,"memo":bool,"sysinfo":bool,"logs":bool,"portscan":bool,"lan":bool,"clipboard":bool,"portkill":bool}}
+//	{"version":1,"tools":{"envcheck":bool,"everything":bool,"memo":bool,"sysinfo":bool,"logs":bool,"portscan":bool,"lan":bool,"clipboard":bool,"portkill":bool}}
+//
+// 2026-11-23 OCR 模块整体移除：写侧键集十枚缩为九枚；盘上遗留的 "ocr" 键按
+// legacyAccessKeys 视同合法不再触发整体拒读，下一次整档回写自然剥离。
 //
 // 形态纪律：全键齐全（键集以 accessToolKeys 为准，扩键时其字段在
 // accessToolsDoc/accessDocOf 同步补齐即可，勿再手打计数；json.MarshalIndent
@@ -51,9 +54,21 @@ const (
 // 破坏族键置后与工具面风险次序一致）。
 // 集合外键 reader 整体拒读，写侧同样既不产出也不盲改；与读方 knownModuleIDs
 // 的同步性由 access_readmatch_test.go 对拍把关。
-var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", "clipboard", "portkill"}
+var accessToolKeys = []string{"envcheck", "everything", "memo", "sysinfo", "logs", "portscan", "lan", "clipboard", "portkill"}
 
+// legacyAccessKeys 是退役模块的盘上遗键登记表（与读方 knownModuleIDs 的墓碑成对）：
+// 合法性判定放行、写侧既不产出也不接受对其拨开关，整档回写即自然剥离。
+// 新增退役键必须两处同批。
+var legacyAccessKeys = map[string]bool{"ocr": true}
+
+// knownAccessTool 是读方视角的键合法性判定（含遗键墓碑）：与读方整体拒读口径对拍。
 func knownAccessTool(key string) bool {
+	return slices.Contains(accessToolKeys, key) || legacyAccessKeys[key]
+}
+
+// writableAccessTool 是写侧可拨开关的键（枚举键）；遗键墓碑只放行盘上存量读取，
+// SetToolAccess 对其显式拒绝——拨了不产出键等于静默无效，必须 fail 出声。
+func writableAccessTool(key string) bool {
 	return slices.Contains(accessToolKeys, key)
 }
 
@@ -137,7 +152,6 @@ type accessDocForWrite struct {
 type accessToolsDoc struct {
 	Envcheck   bool `json:"envcheck"`
 	Everything bool `json:"everything"`
-	Ocr        bool `json:"ocr"`
 	Memo       bool `json:"memo"`
 	Sysinfo    bool `json:"sysinfo"`
 	Logs       bool `json:"logs"`
@@ -153,7 +167,6 @@ func accessDocOf(tools map[string]bool) accessDocForWrite {
 		Tools: accessToolsDoc{
 			Envcheck:   tools["envcheck"],
 			Everything: tools["everything"],
-			Ocr:        tools["ocr"],
 			Memo:       tools["memo"],
 			Sysinfo:    tools["sysinfo"],
 			Logs:       tools["logs"],
@@ -210,9 +223,12 @@ func accessCorruptErr(reason string) error {
 // 破坏面的真正防线是 destructive.json 总闸+二段令牌+黑名单（见 internal/mcp/guarded.go），
 // 而非本写侧的键名屏蔽。
 func (s *McpWizardService) SetToolAccess(tool string, enabled bool) (AccessInfo, error) {
-	if !knownAccessTool(tool) {
+	if !writableAccessTool(tool) {
 		// 键清单从 accessToolKeys 现取拼接：手打清单已因 clipboard 入册而漂移过
 		// 一次（旧文案漏键），扩键时文案随集合自动同步，不再依赖第三处人肉记忆。
+		if legacyAccessKeys[tool] {
+			return s.accessInfo(), fmt.Errorf("授权键 %q 已随模块移除退役——不再提供开关，下一次任一开关整档回写时将自动从盘上剥离", tool)
+		}
 		return s.accessInfo(), fmt.Errorf("未知授权键 %q——合法键为 %s（共 %d 键）",
 			tool, strings.Join(accessToolKeys, " / "), len(accessToolKeys))
 	}

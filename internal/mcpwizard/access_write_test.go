@@ -26,11 +26,11 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 
 	// 缺文件凭空建档：目录由写方创建（读方永不建——写方补位是本文件的职责设定）。
 	orphan := &McpWizardService{accessPath: filepath.Join(t.TempDir(), "no-such-dir", "access.json"), writeFn: atomicWrite, now: svc.now}
-	info, err := orphan.SetToolAccess("ocr", true)
+	info, err := orphan.SetToolAccess("portscan", true)
 	if err != nil {
 		t.Fatalf("缺档首次开关应建档成功: %v", err)
 	}
-	if !info.Readable || !info.Tools.Ocr || info.Tools.Envcheck {
+	if !info.Readable || !info.Tools.Portscan || info.Tools.Envcheck {
 		t.Fatalf("建档后呈现异常: %+v", info)
 	}
 
@@ -139,6 +139,38 @@ func TestSetToolAccessRejectsUnknownKey(t *testing.T) {
 	}
 	if _, err := os.Stat(svc.accessPath); !os.IsNotExist(err) {
 		t.Error("非法键调用不得产生文件")
+	}
+}
+
+// TestLegacyAccessKeyTombstone 遗键墓碑三态（2026-11-23 OCR 模块移除批）：
+// ① 存量文件带 "ocr" 键必须继续被采信（fail-closed 不得连坐封死其余工具）；
+// ② SetToolAccess 拨遗键显式拒绝并给退役指引，不落静默无效写；
+// ③ 任一在册开关的整档回写自动剥离遗键（盘面自愈，读者无感）。
+func TestLegacyAccessKeyTombstone(t *testing.T) {
+	svc, _ := newTestService(t, nil)
+	legacy := `{"version":1,"tools":{"envcheck":true,"ocr":true,"memo":false}}`
+	if err := os.MkdirAll(filepath.Dir(svc.accessPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.accessPath, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	info := svc.accessInfo()
+	if !info.Readable || !info.Tools.Envcheck {
+		t.Fatalf("含遗键的存量档必须整体采信: %+v", info)
+	}
+	if _, err := svc.SetToolAccess("ocr", true); err == nil || !strings.Contains(err.Error(), "退役") {
+		t.Fatalf("拨遗键必须显式拒绝并给退役指引: %v", err)
+	}
+	if _, err := svc.SetToolAccess("memo", true); err != nil {
+		t.Fatal(err)
+	}
+	written := string(accessBytes(t, svc))
+	if strings.Contains(written, `"ocr"`) {
+		t.Errorf("整档回写应剥离遗键，盘上仍有: %s", written)
+	}
+	if !strings.Contains(written, `"memo": true`) || !strings.Contains(written, `"envcheck": true`) {
+		t.Errorf("剥离不得波及在册键: %s", written)
 	}
 }
 

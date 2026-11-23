@@ -54,10 +54,11 @@ func TestModuleCatalogCoversComposition(t *testing.T) {
 	if diff := diffLines(want, got); diff != "" {
 		t.Fatalf("Catalog ID 集合与 composition contract modules 不一致 (-want +got):\n%s", diff)
 	}
-	// 54：内建模块总数硬闸——增删模块必须同改此处与 composition contract，
-	// 数字本身即"有人真的数过"的凭证（旧文案写死"期望 51"曾是滞后标本）。
-	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 54 {
-		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 54）", len(got), contract.Counts.Modules)
+	// 53：内建模块总数硬闸——增删模块必须同改此处与 composition contract，
+	// 数字本身即"有人真的数过"的凭证（旧文案写死"期望 51"曾是滞后标本；
+	// 2026-11-23 OCR 模块整体移除 54→53）。
+	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 53 {
+		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 53）", len(got), contract.Counts.Modules)
 	}
 }
 
@@ -85,7 +86,7 @@ func TestCatalogEntrypointsGrounded(t *testing.T) {
 	}
 
 	// mcp 入口必须钉住 internal/mcp/mcp.go 的无头装配面：
-	// mcpModules() 函数体内的 pkg.New() + ocr 追加注册 + memo 零落盘特例通道。
+	// mcpModules() 函数体内的 pkg.New() + memo 零落盘特例通道。
 	if diff := diffLines(catalogEntrypointIDs(items, extapi.EntryMCP), mcpGroundedModules(t, root)); diff != "" {
 		t.Fatalf("mcp 入口与 internal/mcp/mcp.go 装配证据不一致 (-catalog +mcp.go):\n%s", diff)
 	}
@@ -231,8 +232,8 @@ func catalogModuleSources(t *testing.T, dir string) string {
 }
 
 // mcpGroundedModules 从 internal/mcp/mcp.go 推导无头工具挂载的模块集合：
-// mcpModules() 函数体内的 pkg.New()（envcheck、everything），外加 Run 中追加注册的
-// ocr（ocr.New 证据）与 registryGate 特例通道 memo（memo.ID 证据）。
+// mcpModules() 函数体内的 pkg.New()（envcheck、everything），外加 registryGate
+// 特例通道 memo（memo.ID 证据）。
 // 证据被删除时直接 fail，防止 allowlist 与 mcp 装配面静默脱钩。
 func mcpGroundedModules(t *testing.T, root string) []string {
 	t.Helper()
@@ -242,10 +243,6 @@ func mcpGroundedModules(t *testing.T, root string) []string {
 		t.Fatal("未能在 internal/mcp/mcp.go 锚定 mcpModules() 函数体")
 	}
 	out := extractMatches(body[1], mcpPkgNewRe)
-	if !regexp.MustCompile(`ocr\.New\(`).MatchString(source) {
-		t.Fatal(`internal/mcp/mcp.go 不再含 ocr.New( 追加注册证据`)
-	}
-	out = append(out, "ocr")
 	if !regexp.MustCompile(`memo\.ID`).MatchString(source) {
 		t.Fatal("internal/mcp/mcp.go 不再含 memo.ID 特例通道证据")
 	}

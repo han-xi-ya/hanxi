@@ -27,7 +27,6 @@
  * @typedef {Object} AccessTools
  * @property {boolean} envcheck
  * @property {boolean} everything
- * @property {boolean} ocr
  * @property {boolean} memo
  * @property {boolean} sysinfo
  * @property {boolean} logs

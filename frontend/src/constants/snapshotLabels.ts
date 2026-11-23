@@ -190,7 +190,6 @@ export const STATE_NAME_LABELS: Record<string, string> = {
   'mangodisk.json': 'MangoDisk',
   'markeron.json': 'MarkerOn 标注',
   'msgboard.json': '桌面留言板',
-  'ocr.json': '文字识别',
   'papertodo.json': 'PaperTodo',
   'paseo.json': 'Paseo',
   'piclite.json': 'PicLite',

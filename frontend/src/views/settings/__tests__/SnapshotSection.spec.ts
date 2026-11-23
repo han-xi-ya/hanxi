@@ -90,17 +90,17 @@ describe('历史版本分区', () => {
   it('旧摘要回改纯函数：命中换名、推不出原样、非文件名形态不动（P7-A 不装新不伪造）', () => {
     const files = [
       { path: 'memo/memo_9.md', display: '购物清单', group: 'memo', revisions: 1, lastChange: '', alive: true },
-      { path: 'state/ocr.json', display: 'ocr.json', group: 'state', revisions: 1, lastChange: '', alive: true },
+      { path: 'state/msgboard.json', display: 'msgboard.json', group: 'state', revisions: 1, lastChange: '', alive: true },
     ] as TrackedFile[]
     // 三类来源各命中一位；"等 N 个文件"后缀原样保留
-    expect(decorateLegacySummary('config.json, ocr.json, memo_9.md 等 8 个文件', files))
-      .toBe('工作台设置、文字识别、购物清单 等 8 个文件')
+    expect(decorateLegacySummary('config.json, msgboard.json, memo_9.md 等 8 个文件', files))
+      .toBe('工作台设置、桌面留言板、购物清单 等 8 个文件')
     // 全推不出：连分隔符都不动（不制造"看起来换过脸"的假象）
     expect(decorateLegacySummary('live.json, memo_1.md', files)).toBe('live.json, memo_1.md')
     // 备份计数句/未来新式整句/空串：不命中文件名形态，一律原样
     expect(decorateLegacySummary('30 个文件', files)).toBe('30 个文件')
-    expect(decorateLegacySummary('删除了便签《购物清单》；修改了 文字识别', files))
-      .toBe('删除了便签《购物清单》；修改了 文字识别')
+    expect(decorateLegacySummary('删除了便签《购物清单》；修改了 桌面留言板', files))
+      .toBe('删除了便签《购物清单》；修改了 桌面留言板')
     expect(decorateLegacySummary('', files)).toBe('')
   })
 

@@ -157,7 +157,7 @@ describe('HomeView（工作台首页）', () => {
       [
         mod('memo', '随手记', { initialized: true }),
         mod('wifi', 'WiFi 密码'),
-        mod('ocr', '文字识别', { enabled: false })
+        mod('keyviz', 'Keyviz 按键可视化', { enabled: false })
       ],
       [nav('memo', '/ext/memo', '随手记')]
     )
@@ -219,13 +219,13 @@ describe('HomeView（工作台首页）', () => {
   })
 
   it('常用入口：固定常用在前 + 最近使用补齐，去重、经 navs 可见性过滤、最多 4 个直达', async () => {
-    localStorage.setItem(RECENT_ROUTES_KEY, JSON.stringify(['/ext/memo', '/ext/gone', '/ext/wifi', '/ext/ocr']))
+    localStorage.setItem(RECENT_ROUTES_KEY, JSON.stringify(['/ext/memo', '/ext/gone', '/ext/wifi', '/ext/dead']))
     const navsFixture = [
       nav('frpc', '/frpc', 'frpc 联调'),
       nav('everything', '/ext/everything', 'Everything 搜索'),
       nav('memo', '/ext/memo', '随手记'),
       nav('wifi', '/ext/wifi', 'WiFi 密码')
-      // snipaste 未启用（不在 navs）→ 固定项跳过；/ext/gone、/ext/ocr 无 nav → 实时过滤
+      // snipaste 未启用（不在 navs）→ 固定项跳过；/ext/gone、/ext/dead 无 nav → 实时过滤
     ]
     stubCore([mod('memo', '随手记')], navsFixture)
     stubTasks('fail')
@@ -245,21 +245,19 @@ describe('HomeView（工作台首页）', () => {
     w.unmount()
   })
 
-  it('最近任务：两桶合并按 id 降序取最近，行含图标+标题+时间', async () => {
+  it('最近任务：单桶按 id 降序取最近，行含图标+标题+时间', async () => {
     stubCore([], [])
     stubTasks({
-      ocr: [histRec(3, 'ocr', '识别 c.png'), histRec(1, 'ocr', '识别 a.png')],
-      portkill: [histRec(2, 'portkill', '查杀 8080')]
+      portkill: [histRec(2, 'portkill', '查杀 8080'), histRec(1, 'portkill', '查询 3306')]
     })
     const w = await mountView()
-    expect(histSvc.List).toHaveBeenCalledWith('ocr', '')
     expect(histSvc.List).toHaveBeenCalledWith('portkill', '')
     expect(histSvc.List).not.toHaveBeenCalledWith('envcheck', '')
     const rows = w.findAll('.task-row')
-    expect(rows).toHaveLength(3)
-    expect(rows.map((r) => r.find('.task-title').text())).toEqual(['识别 c.png', '查杀 8080', '识别 a.png'])
+    expect(rows).toHaveLength(2)
+    expect(rows.map((r) => r.find('.task-title').text())).toEqual(['查杀 8080', '查询 3306'])
     // 历史行副文案走模块名（moduleNameOf），不泄漏桶键原文；未命中模块回落原键
-    expect(rows.map((r) => r.find('.task-meta').text())).toEqual(['ocr', 'portkill', 'ocr'])
+    expect(rows.map((r) => r.find('.task-meta').text())).toEqual(['portkill', 'portkill'])
     expect(rows[0].find('svg.app-icon').exists()).toBe(true)
     expect(rows[0].find('time.task-time').text()).not.toBe('')
     w.unmount()
@@ -278,13 +276,12 @@ describe('HomeView（工作台首页）', () => {
     w2.unmount()
   })
 
-  it('最近任务（Wave 4）：统一 Operation 终态与历史两桶按时间降序合并取 5，operation 行取词表文案', async () => {
+  it('最近任务（Wave 4）：统一 Operation 终态与历史单桶按时间降序合并取 5，operation 行取词表文案', async () => {
     const { useOperations } = await import('../../composables/useOperations')
     stubCore([mod('markeron', 'MarkerOn 标注')], [])
     stubTasks({
-      ocr: [histRec(3, 'ocr', '识别 c.png'), // 10:00
-        { ...histRec(4, 'ocr', '识别 d.png'), createdAt: '2026-09-17T10:10:00+08:00' }],
-      portkill: [{ ...histRec(2, 'portkill', '查杀 8080'), createdAt: '2026-09-17T09:00:00+08:00' }],
+      portkill: [{ ...histRec(3, 'portkill', '查询 3306'), createdAt: '2026-09-17T10:00:00+08:00' }, // 10:00
+        { ...histRec(4, 'portkill', '查询 3307'), createdAt: '2026-09-17T10:10:00+08:00' }],
     })
     appSvc.ListOperations.mockResolvedValue([
       // 在途项不进最近任务列表（归模块中心在途条）
@@ -296,14 +293,14 @@ describe('HomeView（工作台首页）', () => {
     await useOperations().refresh() // 单例投影先行，模拟观察面已有现态
     const w = await mountView()
     const rows = w.findAll('.task-row')
-    // 两源 6 条 → 降序截 5（最旧的 cancelled 出局，13:00 running 本就不入列）
+    // 两源 5 条全入列（截 5 未触发；13:00 running 本就不入列）
     expect(rows).toHaveLength(5)
     expect(rows.map((r) => r.find('.task-title').text())).toEqual([
       'MarkerOn 标注 · 安装', // 12:00 succeeded
       'MarkerOn 标注 · 更新', // 11:45 failed
-      '识别 d.png', // 10:10 history
-      '识别 c.png', // 10:00 history
-      '查杀 8080', // 09:00 history（08:05 的 cancelled 出局）
+      '查询 3307', // 10:10 history
+      '查询 3306', // 10:00 history
+      'MarkerOn 标注 · 卸载', // 08:05 cancelled（降序末位）
     ])
     // operation 行摘要：error.message 原文优先，无错误回落阶段短语
     expect(rows[1].find('.task-meta').text()).toBe('磁盘空间不足')

@@ -10,7 +10,7 @@
 //    ListTerminals() → TermSessionRow[]；RenameTerminal(id, title)；KillTerminal(id)（杀会话并除账）。
 //    PickDirectory() → string：Go 侧原生"选择文件夹"对话框（模态挂主窗），
 //    取消=空串不是错误；JS→Go 的对话框参数线格式未验证，不自走前端 Dialogs。
-//    Profile 固定三档：cmd / powershell / claude（展示名 命令行 / PowerShell / Claude Code）。
+//    Profile 固定四档：cmd / powershell / claude / omp（展示名 命令行 / PowerShell / Claude Code / Oh My Pi）。
 //  - 字节通道：`Stream("terminal:io")`（@wailsio/runtime GoStream），每个终端页一条连接。
 //    **帧协议：首字节标签：0x00=JSON 控制帧，0x01=原始终端字节。**
 //    连接建立（socket onopen）后客户端先发 {"op":"open","sessionId":id}；

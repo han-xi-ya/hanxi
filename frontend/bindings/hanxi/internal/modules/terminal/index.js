@@ -10,7 +10,7 @@ export {
 import * as $models from "./models.js";
 
 /**
- * TermProfile v0 固定三档（返回前端用于入口列表）。
+ * TermProfile 固定四档（返回前端用于入口列表；前端 TERM_PROFILES 是展示侧镜像）。
  * @typedef {$models.TermProfile} TermProfile
  */
 

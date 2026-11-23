@@ -20,9 +20,9 @@ const frontendModules = () => Object.entries(ROUTES)
   .sort()
 
 describe('constants/navigation', () => {
-  it('登记了全部 67 条路由（2026-11-04 `omp` 并入 envcheck 后自 68 回落；歪账链见 git log）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(67)
-    for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard', '/ext/piik', '/ext/clipboard', '/ext/heukms', '/ext/terminal']) {
+  it('登记了全部 66 条路由（2026-11-23 `ocr` 模块整体移除自 67 回落；前值 67 系 2026-11-04 `omp` 并入 envcheck 后自 68 回落；歪账链见 git log）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(66)
+    for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/webapp', '/ext/msgboard', '/ext/piik', '/ext/clipboard', '/ext/heukms', '/ext/terminal']) {
       expect(ROUTES[route]).toBeDefined()
     }
     for (const s of SETTINGS_SECTIONS) {
@@ -43,7 +43,6 @@ describe('constants/navigation', () => {
     expect(withModule).toHaveLength(compositionContract.counts.modules)
     expect(withModule).toContain('/frpc=frpc')
     expect(withModule).toContain('/ext/webapp=webapp')
-    expect(withModule).toContain('/ext/ocr=ocr')
     expect(withModule).toContain('/ext/envcheck=envcheck')
     expect(withModule).toContain('/ext/wsl=wsl')
     expect(withModule).toContain('/ext/subnetdesk=subnetdesk')

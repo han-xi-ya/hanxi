@@ -31,7 +31,7 @@
 | `docs/FUTURE_FEATURE_RECOMMENDATIONS.md` | 09-19 后续功能候选方向评估（已带时点快照帽） | 584 | 2026-10-12 | 快照 |
 | `docs/MOOTOOL_ANALYSIS.md` | MooTool 借鉴分析简版（四份可研报告的输入源，详版在 git 历史 77044c0） | 108 | 2026-09-17 | 快照 |
 | `docs/MOTIVATION.md` | 项目缘起自述（"为什么做"，功能取舍的原始依据） | 52 | 2026-09-19 | 活 |
-| `docs/OCR_DUAL_ENGINE_PLAN.md` | OCR 双引擎（微信私发+PP-OCRv6 公开）执行计划 | 181 | 2026-09-17 | 疑过期（复选框未勾/M0"待验"，与 hanxi-ocr 组件已实际发货的现状疑似脱节，待 OCR 线对账） |
+| `docs/OCR_DUAL_ENGINE_PLAN.md` | OCR 双引擎（微信私发+PP-OCRv6 公开）执行计划 | 181 | 2026-09-17 | 已结案（2026-11-23 `ocr` 模块整体移除，计划失去执行主体；保留历史设计账，含私发敏感节勿公开引用） |
 | `docs/PLUGINIZATION_AND_PRODUCT_EVOLUTION.md` | 插件化时机与产品演进专题基线（带时点快照帽，数字回 FACTS） | 416 | 2026-10-12 | 活（判断基线） |
 | `docs/PLUGINS_ARCHITECTURE.md` | 六模块时代的单体懒加载改造方案（首段显式声明"历史决策留档不再更新"） | 204 | 2026-10-12 | 快照 |
 | `docs/PRD.md` | 需求与产品设计规范 v1.3（"做成什么样"） | 165 | 2026-10-21 | 活 |
@@ -178,7 +178,7 @@
 | 进度/排期 | PLAN_REMAINING_WORK（复入口）、BACKLOG、DEVPLAN、PROGRESS | 职责不动；DEVPLAN 标题或改名消歧（§3.4） |
 | 战略/动机/评估 | PROJECT_STRATEGY、MOTIVATION、PLUGINIZATION…、FUTURE_FEATURE…、MOOTOOL… | 战略与动机留根；两份带帽评估+借鉴分析入 archive |
 | 审计/质量史账 | ~~BUG_AUDIT、CODE_QUALITY_PROGRESS、PROJECT_REVIEW、WSL_REDESIGN~~（四份已于 2026-10-21 删除，孤本入 KEY-NUGGETS）、FEATURES_OVERVIEW、PLUGINS_ARCHITECTURE、ADR 关联旧方案 | 前四份已结案删除；余下入 archive（ADR 三份留 `docs/adr/` 不动） |
-| OCR 域 | OCR_DUAL_ENGINE_PLAN（+私发组件在仓外文档） | 疑过期待 OCR 线对账后归档或续活（§4） |
+| OCR 域 | OCR_DUAL_ENGINE_PLAN（+私发组件在仓外文档） | 已结案（2026-11-23 模块整体移除；仓外私发组件档归机主自持） |
 | 单议题收口档案 | plans 下 N 系×10、P0 批×3、PATHS、SNAPSHOT、PIIK、CLIPBOARD、HISTORY、MCP、clipboard 三部曲×3 | 完结者移 archive 或统一挂终态帽留地（§3.3） |
 | 未完工执行面 | PLAN_OFFICIAL…、PLAN_WORKBENCH…、PLAN_W1…、PLAN_W6…、WAVE5…（待用部分） | 留 plans；W6/WAVE5 动工前按 FACTS 重锚 |
 | 设计资产 | docs/design/**、design-system 三 reference | 维持权威链；v1/报告随 archive（§3.5） |
@@ -188,7 +188,7 @@
 ## 4. 存疑项（无法只读核验定论，需所有权线/机主确认）
 
 1. **`docs/DEVELOPMENT.md`（活文档中末改最早，09-17）**：构建/运行命令描述是否仍与现行环境一致（本机存在 npm run shim 异常、`task build` 可用等环境事实），需一次真机对账。
-2. **`docs/OCR_DUAL_ENGINE_PLAN.md`**：正文复选框与风险表仍是"待验"口径，而 OCR 私发组件实际已在发货迭代——计划执行状态未回写。
+2. ~~**`docs/OCR_DUAL_ENGINE_PLAN.md`**：正文复选框与风险表仍是"待验"口径，而 OCR 私发组件实际已在发货迭代——计划执行状态未回写~~ **已结案（2026-11-23）**：`ocr` 模块整体移除，计划失去执行主体，本文档已盖"已结案"戳转纯历史账。
 3. ~~**`docs/plans/PLAN_P0_BATCH2_FIX.md`** 标题写"2b 待机主选机制"与 `CODE_QUALITY_REVIEW_PROGRESS`"批 1/2/3 全部收口入库"矛盾~~ **已结案（2026-10-21 T8 取证）**：CODE_QUALITY 侧为实——2b 的 19/19 journal 租约买断由 `667006f`+`338dac5` 收口、登记 `f3f63fe`（均 2026-09-23），PRW 批 2 行亦载"2b ✅"实况；相撞处仅该档旧标题一句，T6 已为其盖"已完成"状态戳。原 `CODE_QUALITY_REVIEW_PROGRESS` 档已删，孤本见 [KEY-NUGGETS §三](archive/KEY-NUGGETS.md)。
 4. **`docs/plans/PLAN_W6_HOST_CONTRACT.md`**：底账 28 款 vs FACTS 现值 32 款；"开工前评审件"是否仍排期内，或应按 ADR-0003 降档。
 5. **`docs/plans/REAL_DEVICE_ACCEPTANCE_2026-09-25.md`**：验收锚定 09-25 构建物，其后已有多批入库（含托管新件）；重验或归档需裁决。

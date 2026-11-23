@@ -4,7 +4,7 @@
 //
 //  1. 查询类严格只读；扫描类仅可达性探测；破坏性工具族（端口查杀）双授权默认
 //     关、二段确认方生效——这是红线从"只暴露不改状态的工具"显式升版后的定稿口径
-//     （升版论证见 guarded.go 文件头）：纯查询族（envcheck/everything/ocr/memo/
+//     （升版论证见 guarded.go 文件头）：纯查询族（envcheck/everything/memo/
 //     sysinfo/logs）严格只读；扫描族（portscan/lan）是**主动网络探测**——不修改
 //     本机或任何设备状态，但会出网、结果含网络拓扑，因此各立授权键，参数面收口为
 //     有界小扫描（见 tools_scan.go 包注），与纯查询工具同等门禁；破坏族（portkill
@@ -50,7 +50,6 @@ import (
 	"hanxi/internal/modules/everything"
 	"hanxi/internal/modules/lan"
 	"hanxi/internal/modules/memo"
-	"hanxi/internal/modules/ocr"
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/sysinfo"
@@ -162,8 +161,7 @@ func Run() error {
 	// 拒绝无头调用，杜绝"GUI 卸载、MCP 仍可用"旁路；无头零落盘承诺不受影响。
 	headlessReceipts := settings.NewReceiptStore(paths.ModulesReceiptsDir(), paths.ModulesLedgerFile())
 	registry.SetReceiptStorage(headlessReceipts)
-	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
-	sysModule := sysinfo.New() // 同上：N32 系统档案后端取同一 service 实例
+	sysModule := sysinfo.New() // N32 系统档案后端取同一 service 实例（与 GUI 同一 service 契约）
 	// 扫描族（AI 接入批）：两模块构造均零副作用（无落盘/无常驻资源，OnInit nil），
 	// 进无头 registry 取"与 GUI 同谱的启用位门禁 + lease drain 收口"；lan 的
 	// service 实例被 MCP 后端复用（单飞闸与动态超时同谱），portscan 只进门禁、
@@ -175,7 +173,7 @@ func Run() error {
 	// 进无头 registry 取与 GUI 同谱的启用门禁与 lease drain 收口；service 实例被
 	// MCP 后端 adapter 复用（GUI 与 MCP 同一 service 契约，见 tools_portkill.go）。
 	portkillModule := portkill.New(plat)
-	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule, lanModule, portscanModule, portkillModule)...); err != nil {
+	if err := registry.Register(append(mcpModules(plat), sysModule, lanModule, portscanModule, portkillModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
 	}
 	defer registry.ShutdownAll()
@@ -204,12 +202,6 @@ func Run() error {
 	}
 	if lanMod, ok := lanModule.(*lan.Module); ok && lanMod != nil {
 		deps.Lan = lanProbe{svc: lanMod.Service()}
-	}
-	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
-		// service 无头可用：client 已显式 Proxy:nil（回环 HTTP 纪律）、构造零落盘、
-		// 事件出口 application.Get() nil 守卫；服务离线时 RecognizeImage 返回
-		// "请先启动服务"业务指引而非拉起（§2.2 ocr 行）。
-		deps.OCR = ocrMod.Service()
 	}
 	if sysMod, ok := sysModule.(*sysinfo.Module); ok && sysMod != nil {
 		// GetReport 内 holder.Enter 走统一调用门：门禁已由 registryGate.Acquire
